@@ -139,16 +139,24 @@ export async function tryCreateMatchForSession(sessionId: string) {
 
     // Fire-and-forget push
     void Promise.allSettled([
-      sendPush(matchFull.userAId, {
-        title: 'Match found!',
-        body: `You were paired with ${matchFull.userB.name}.`,
-        data: { type: 'match_start', matchId: matchFull.id },
-      }),
-      sendPush(matchFull.userBId, {
-        title: 'Match found!',
-        body: `You were paired with ${matchFull.userA.name}.`,
-        data: { type: 'match_start', matchId: matchFull.id },
-      }),
+      sendPush(
+        matchFull.userAId,
+        {
+          title: 'Match found!',
+          body: `You were paired with ${matchFull.userB.name}.`,
+          data: { type: 'match_start', matchId: matchFull.id },
+        },
+        'match_found',
+      ),
+      sendPush(
+        matchFull.userBId,
+        {
+          title: 'Match found!',
+          body: `You were paired with ${matchFull.userA.name}.`,
+          data: { type: 'match_start', matchId: matchFull.id },
+        },
+        'match_found',
+      ),
     ]);
 
     void track('match_start', matchFull.userAId, { matchId: matchFull.id });

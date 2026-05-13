@@ -7,6 +7,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/httpError';
 import { endMatch } from '../services/matchmakingService';
 import { track } from '../services/analyticsService';
+import { sendPush } from '../services/pushService';
 import { emitToUser } from '../socket';
 
 export const matchRouter = Router();
@@ -18,6 +19,15 @@ const INTERACTIONS = [
   'waiting',
   'did_not_work',
 ] as const;
+
+/** Short English labels for FCM body (device notification tray). */
+const INTERACTION_PUSH_LABEL: Record<(typeof INTERACTIONS)[number], string> = {
+  add_me: 'Add me',
+  already_added: 'Already added',
+  enter_lobby: 'Enter lobby',
+  waiting: 'Waiting',
+  did_not_work: "Didn't work",
+};
 
 const interactionSchema = z.object({
   type: z.enum(INTERACTIONS),
@@ -45,6 +55,13 @@ matchRouter.get(
     const profile = (u: typeof m.userA) =>
       u.gameProfiles.find((p) => p.gameId === m.session.gameId) ?? null;
 
+    const interactions = await prisma.interaction.findMany({
+      where: { matchId: m.id },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+      select: { id: true, userId: true, type: true, createdAt: true },
+    });
+
     res.json({
       match: {
         id: m.id,
@@ -69,6 +86,12 @@ matchRouter.get(
           nickname: profile(other)?.nickname ?? null,
           playerId: profile(other)?.playerId ?? null,
         },
+        interactions: interactions.map((row) => ({
+          id: row.id,
+          userId: row.userId,
+          type: row.type,
+          createdAt: row.createdAt.toISOString(),
+        })),
       },
     });
   }),
@@ -99,6 +122,27 @@ matchRouter.post(
       type: req.body.type,
       at: created.createdAt,
     });
+
+    const interactionType = req.body.type as (typeof INTERACTIONS)[number];
+    const sender = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+    const senderName = sender?.name?.trim() || 'Teammate';
+    const actionLabel = INTERACTION_PUSH_LABEL[interactionType];
+    void sendPush(
+      otherUserId,
+      {
+        title: 'Teammate update',
+        body: `${senderName}: ${actionLabel}`,
+        data: {
+          type: 'match_interaction',
+          matchId,
+          interactionType,
+        },
+      },
+      'interaction',
+    );
 
     void track('interaction_sent', userId, { matchId, type: req.body.type });
     res.status(201).json({ ok: true });

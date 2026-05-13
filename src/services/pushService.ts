@@ -2,7 +2,14 @@ import { prisma } from '../config/database';
 import { getFirebaseAdmin } from '../config/firebase';
 import { logger } from '../utils/logger';
 
-const COOLDOWN_MS = 60_000; // 1 push per minute per user
+/** Cooldown per user per channel so match-found (1/min) does not block teammate quick-action pushes. */
+const COOLDOWN_MS: Record<PushChannel, number> = {
+  match_found: 60_000,
+  interaction: 12_000,
+};
+
+export type PushChannel = 'match_found' | 'interaction';
+
 const lastSentAt = new Map<string, number>();
 
 export interface PushPayload {
@@ -11,25 +18,46 @@ export interface PushPayload {
   data?: Record<string, string>;
 }
 
+function pushKey(userId: string, channel: PushChannel): string {
+  return `${userId}:${channel}`;
+}
+
 /**
  * Send a push notification to a user via FCM. Respects:
- *  - 1/min cooldown (blueprint section 13)
+ *  - per-channel cooldown (match_found: 1/min, interaction: 12s — blueprint + teammate signals)
  *  - removes invalid token automatically
  *  - no-ops gracefully if Firebase is not configured (dev environments)
+ *
+ * Logs every outcome at `info` so you can verify delivery in server logs ("simulate" / trace).
  */
-export async function sendPush(userId: string, payload: PushPayload): Promise<boolean> {
+export async function sendPush(
+  userId: string,
+  payload: PushPayload,
+  channel: PushChannel = 'match_found',
+): Promise<boolean> {
   const fb = getFirebaseAdmin();
-  if (!fb) return false;
+  if (!fb) {
+    logger.info({ userId, channel, outcome: 'skipped_no_firebase' }, 'push');
+    return false;
+  }
 
   const now = Date.now();
-  const last = lastSentAt.get(userId) ?? 0;
-  if (now - last < COOLDOWN_MS) return false;
+  const key = pushKey(userId, channel);
+  const cooldown = COOLDOWN_MS[channel];
+  const last = lastSentAt.get(key) ?? 0;
+  if (now - last < cooldown) {
+    logger.info({ userId, channel, outcome: 'skipped_cooldown', cooldownMs: cooldown, msSinceLast: now - last }, 'push');
+    return false;
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { fcmToken: true },
   });
-  if (!user?.fcmToken) return false;
+  if (!user?.fcmToken) {
+    logger.info({ userId, channel, outcome: 'skipped_no_token' }, 'push');
+    return false;
+  }
 
   try {
     await fb.messaging().send({
@@ -39,7 +67,8 @@ export async function sendPush(userId: string, payload: PushPayload): Promise<bo
       android: { priority: 'high' },
       apns: { payload: { aps: { sound: 'default' } } },
     });
-    lastSentAt.set(userId, now);
+    lastSentAt.set(key, now);
+    logger.info({ userId, channel, outcome: 'sent', title: payload.title }, 'push');
     return true;
   } catch (err: unknown) {
     const code = (err as { code?: string }).code ?? '';
@@ -48,9 +77,9 @@ export async function sendPush(userId: string, payload: PushPayload): Promise<bo
       code === 'messaging/invalid-registration-token'
     ) {
       await prisma.user.update({ where: { id: userId }, data: { fcmToken: null } });
-      logger.info({ userId }, 'Removed invalid FCM token');
+      logger.info({ userId, channel, outcome: 'invalid_token_removed' }, 'push');
     } else {
-      logger.warn({ err, userId }, 'FCM send failed');
+      logger.warn({ err, userId, channel, outcome: 'fcm_error' }, 'push');
     }
     return false;
   }
