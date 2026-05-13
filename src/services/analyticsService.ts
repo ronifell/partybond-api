@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '../config/database';
 import { logger } from '../utils/logger';
 
@@ -22,7 +24,11 @@ export async function track(
 ): Promise<void> {
   try {
     await prisma.analyticsEvent.create({
-      data: { name, userId: userId ?? null, payload: payload ?? undefined },
+      data: {
+        name,
+        userId: userId ?? null,
+        payload: payload !== undefined ? (payload as Prisma.InputJsonObject) : undefined,
+      },
     });
   } catch (err) {
     logger.warn({ err, name }, 'Failed to record analytics event');
