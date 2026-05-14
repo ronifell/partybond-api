@@ -37,6 +37,14 @@ enum SessionMode {
   competitive
 }
 
+// Rough skill bracket for matchmaking pools (same session = same tier).
+enum SessionSkillTier {
+  beginner
+  intermediate
+  advanced
+  veteran
+}
+
 enum MatchStatus {
   active
   finished
@@ -126,6 +134,7 @@ model Session {
   title         String
   createdById   String        @map("created_by")
   gameMode      SessionMode   @default(casual) @map("game_mode")
+  skillTier     SessionSkillTier @default(beginner) @map("skill_tier")
   playersNeeded Int           @map("players_needed")
   scheduledAt   DateTime      @map("scheduled_at")
   status        SessionStatus @default(open)
@@ -139,6 +148,7 @@ model Session {
   matches       Match[]
 
   @@index([gameId, status, scheduledAt])
+  @@index([gameId, status, gameMode, skillTier])
   @@map("sessions")
 }
 

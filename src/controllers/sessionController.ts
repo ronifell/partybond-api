@@ -12,10 +12,13 @@ import { TX_OPTIONS } from '../config/prismaTx';
 
 export const sessionRouter = Router();
 
+const skillTierEnum = z.enum(['beginner', 'intermediate', 'advanced', 'veteran']);
+
 const createSessionSchema = z.object({
   gameId: z.string().min(1),
   title: z.string().min(2).max(60),
   gameMode: z.enum(['casual', 'competitive']),
+  skillTier: skillTierEnum.optional().default('beginner'),
   playersNeeded: z.coerce.number().int().refine((v) => v === 2 || v === 4, {
     message: 'playersNeeded must be 2 or 4',
   }),
@@ -24,6 +27,8 @@ const createSessionSchema = z.object({
 
 const listQuerySchema = z.object({
   gameId: z.string().optional(),
+  gameMode: z.enum(['casual', 'competitive']).optional(),
+  skillTier: skillTierEnum.optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
@@ -32,11 +37,18 @@ sessionRouter.get(
   requireAuth,
   validate(listQuerySchema, 'query'),
   asyncHandler(async (req, res) => {
-    const { gameId, limit } = req.query as unknown as { gameId?: string; limit: number };
+    const { gameId, gameMode, skillTier, limit } = req.query as unknown as {
+      gameId?: string;
+      gameMode?: 'casual' | 'competitive';
+      skillTier?: 'beginner' | 'intermediate' | 'advanced' | 'veteran';
+      limit: number;
+    };
     const sessions = await prisma.session.findMany({
       where: {
         status: { in: ['open', 'active'] },
         ...(gameId ? { gameId } : {}),
+        ...(gameMode ? { gameMode } : {}),
+        ...(skillTier ? { skillTier } : {}),
       },
       orderBy: { scheduledAt: 'asc' },
       take: limit,
@@ -53,6 +65,7 @@ sessionRouter.get(
         gameId: s.gameId,
         gameName: s.game.name,
         gameMode: s.gameMode,
+        skillTier: s.skillTier,
         playersNeeded: s.playersNeeded,
         scheduledAt: s.scheduledAt,
         status: s.status,
@@ -82,6 +95,7 @@ sessionRouter.post(
         gameId: body.gameId,
         title: body.title,
         gameMode: body.gameMode,
+        skillTier: body.skillTier,
         playersNeeded: body.playersNeeded,
         scheduledAt,
         status,
@@ -116,6 +130,7 @@ sessionRouter.get(
         gameId: s.gameId,
         gameName: s.game.name,
         gameMode: s.gameMode,
+        skillTier: s.skillTier,
         playersNeeded: s.playersNeeded,
         scheduledAt: s.scheduledAt,
         status: s.status,

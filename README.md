@@ -41,8 +41,8 @@ All under `/api/v1`. Bearer JWT required unless noted.
 | PUT | `/users/me/fcm-token` | Save / clear FCM token. |
 | PUT | `/users/me/game-profile` | Set `{ gameId, nickname, playerId }`. Also sets `selectedGame`. |
 | GET | `/games` | List games (active + coming_soon). Public. |
-| GET | `/sessions?gameId=…` | List open/active sessions (limit 20). |
-| POST | `/sessions` | Create session. |
+| GET | `/sessions?gameId=…&gameMode=…&skillTier=…` | List open/active sessions (limit 20). Optional filters narrow matchmaking pools (same `gameMode` + `skillTier` = same lobby type). |
+| POST | `/sessions` | Create session (`gameMode`, `skillTier`, `playersNeeded`, …). |
 | GET | `/sessions/:id` | Session detail + waiting list. |
 | POST | `/sessions/:id/queue` | Join queue. Triggers matchmaking. |
 | DELETE | `/sessions/:id/queue` | Leave queue. |
