@@ -15,6 +15,10 @@ npm run dev
 
 The API runs at `http://localhost:4000` and exposes Socket.IO at the same origin.
 
+## Production / `dist/`
+
+`npm start` runs `prestart` → `npm run build` so `dist/` matches `src/` (the validate middleware uses Zod; an outdated build can **drop** fields such as `lookingFor` from `PATCH /users/me`). If you start the server with `node dist/server.js` directly, run `npm run build` after code changes.
+
 ## Environment
 
 See `.env.example`. Important:
@@ -32,7 +36,7 @@ All under `/api/v1`. Bearer JWT required unless noted.
 | POST | `/auth/register` | Create account (email, password, name, age). Returns `{ token, user }`. Public. |
 | POST | `/auth/login` | Log in. Returns `{ token, user }`. Public. |
 | GET | `/auth/me` | Current user (with `gameProfiles`). |
-| PATCH | `/users/me` | Update name/age/locale/selectedGame. |
+| PATCH | `/users/me` | Update name, age, locale, selectedGame, **lookingFor** (≤60 chars). |
 | POST | `/users/me/photo` | Upload profile photo (`multipart/form-data`, field `photo`). |
 | PUT | `/users/me/fcm-token` | Save / clear FCM token. |
 | PUT | `/users/me/game-profile` | Set `{ gameId, nickname, playerId }`. Also sets `selectedGame`. |

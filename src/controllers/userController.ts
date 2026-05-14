@@ -36,7 +36,7 @@ const upload = multer({
   },
 });
 
-const updateProfileSchema = z.object({
+const updateProfileFields = z.object({
   name: z.string().min(2).max(60).optional(),
   age: z.coerce.number().int().min(13).max(120).optional(),
   locale: z.enum(['en', 'pt']).optional(),
@@ -52,12 +52,22 @@ const updateProfileSchema = z.object({
     }),
 });
 
+/** Map snake_case body keys (some clients / proxies) before Zod strips unknown fields. */
+const updateProfileSchema = z.preprocess((val) => {
+  if (!val || typeof val !== 'object' || Array.isArray(val)) return val;
+  const o = val as Record<string, unknown>;
+  if (o.lookingFor === undefined && o.looking_for !== undefined) {
+    return { ...o, lookingFor: o.looking_for };
+  }
+  return val;
+}, updateProfileFields);
+
 userRouter.patch(
   '/me',
   requireAuth,
   validate(updateProfileSchema),
   asyncHandler(async (req, res) => {
-    const b = req.body as z.infer<typeof updateProfileSchema>;
+    const b = req.body as z.infer<typeof updateProfileFields>;
     const data: Prisma.UserUpdateInput = {};
     if (b.name !== undefined) data.name = b.name;
     if (b.age !== undefined) data.age = b.age;
