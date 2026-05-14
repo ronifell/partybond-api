@@ -5,6 +5,12 @@ const prisma = new PrismaClient();
 async function main() {
   const games = [
     { id: 'free_fire', name: 'Free Fire', status: GameStatus.active, maxPlayers: 4 },
+    {
+      id: 'elden_ring_nightreign',
+      name: 'Elden Ring Nightreign',
+      status: GameStatus.active,
+      maxPlayers: 3,
+    },
     { id: 'valorant', name: 'Valorant', status: GameStatus.coming_soon, maxPlayers: 5 },
     { id: 'pubg_mobile', name: 'PUBG Mobile', status: GameStatus.coming_soon, maxPlayers: 4 },
     { id: 'mobile_legends', name: 'Mobile Legends', status: GameStatus.coming_soon, maxPlayers: 5 },

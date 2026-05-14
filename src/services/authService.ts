@@ -9,6 +9,7 @@ export interface PublicUser {
   name: string;
   age: number;
   photoUrl: string | null;
+  lookingFor: string | null;
   selectedGame: string | null;
   state: 'idle' | 'in_queue' | 'in_match';
   currentSessionId: string | null;
@@ -26,6 +27,7 @@ function toPublicUser(user: Awaited<ReturnType<typeof loadUserById>>): PublicUse
     name: user.name,
     age: user.age,
     photoUrl: user.photoUrl,
+    lookingFor: user.lookingFor ?? null,
     selectedGame: user.selectedGame,
     state: user.state,
     currentSessionId: user.currentSessionId,

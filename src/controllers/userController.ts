@@ -40,6 +40,15 @@ const updateProfileSchema = z.object({
   age: z.coerce.number().int().min(13).max(120).optional(),
   locale: z.enum(['en', 'pt']).optional(),
   selectedGame: z.string().optional(),
+  lookingFor: z
+    .union([z.string().max(60), z.literal(''), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (v === '' || v === null) return null;
+      const t = v.trim();
+      return t.length === 0 ? null : t;
+    }),
 });
 
 userRouter.patch(
