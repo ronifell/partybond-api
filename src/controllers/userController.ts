@@ -36,6 +36,40 @@ const upload = multer({
   },
 });
 
+/**
+ * OkHttp / Gson often send explicit `null` for omitted fields; Zod's `.optional()` only
+ * allows `undefined`, not `null`, which would otherwise 400 the whole PATCH.
+ * Also map `looking_for` → `lookingFor`, drop invalid `locale`, and drop empty `age`.
+ */
+function normalizeProfilePatchInput(val: unknown): unknown {
+  if (!val || typeof val !== 'object' || Array.isArray(val)) return val;
+  const o = { ...(val as Record<string, unknown>) };
+
+  if (o.lookingFor === undefined && o.looking_for !== undefined) {
+    o.lookingFor = o.looking_for;
+  }
+  delete o.looking_for;
+
+  for (const k of ['name', 'age', 'locale', 'selectedGame', 'lookingFor']) {
+    if (o[k] === null) delete o[k];
+  }
+  if (o.age === '') delete o.age;
+
+  const loc = o.locale;
+  if (typeof loc === 'string' && loc !== 'en' && loc !== 'pt') {
+    delete o.locale;
+  }
+
+  if (o.lookingFor != null && typeof o.lookingFor !== 'string') {
+    o.lookingFor = String(o.lookingFor);
+  }
+  if (typeof o.name === 'string' && o.name.trim() === '') {
+    delete o.name;
+  }
+
+  return o;
+}
+
 const updateProfileFields = z.object({
   name: z.string().min(2).max(60).optional(),
   age: z.coerce.number().int().min(13).max(120).optional(),
@@ -52,15 +86,7 @@ const updateProfileFields = z.object({
     }),
 });
 
-/** Map snake_case body keys (some clients / proxies) before Zod strips unknown fields. */
-const updateProfileSchema = z.preprocess((val) => {
-  if (!val || typeof val !== 'object' || Array.isArray(val)) return val;
-  const o = val as Record<string, unknown>;
-  if (o.lookingFor === undefined && o.looking_for !== undefined) {
-    return { ...o, lookingFor: o.looking_for };
-  }
-  return val;
-}, updateProfileFields);
+const updateProfileSchema = z.preprocess(normalizeProfilePatchInput, updateProfileFields);
 
 userRouter.patch(
   '/me',
