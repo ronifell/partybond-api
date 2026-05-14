@@ -78,6 +78,7 @@ matchRouter.get(
           photoUrl: me.photoUrl,
           nickname: profile(me)?.nickname ?? null,
           playerId: profile(me)?.playerId ?? null,
+          lookingFor: me.lookingFor ?? null,
         },
         opponent: {
           id: other.id,
@@ -85,6 +86,7 @@ matchRouter.get(
           photoUrl: other.photoUrl,
           nickname: profile(other)?.nickname ?? null,
           playerId: profile(other)?.playerId ?? null,
+          lookingFor: other.lookingFor ?? null,
         },
         interactions: interactions.map((row) => ({
           id: row.id,

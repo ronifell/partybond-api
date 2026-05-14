@@ -116,6 +116,7 @@ export async function tryCreateMatchForSession(sessionId: string) {
         photoUrl: matchFull.userB.photoUrl,
         nickname: profileFor(matchFull.userB)?.nickname ?? null,
         playerId: profileFor(matchFull.userB)?.playerId ?? null,
+        lookingFor: matchFull.userB.lookingFor ?? null,
       },
       expiresAt: matchFull.expiresAt.toISOString(),
     };
@@ -129,6 +130,7 @@ export async function tryCreateMatchForSession(sessionId: string) {
         photoUrl: matchFull.userA.photoUrl,
         nickname: profileFor(matchFull.userA)?.nickname ?? null,
         playerId: profileFor(matchFull.userA)?.playerId ?? null,
+        lookingFor: matchFull.userA.lookingFor ?? null,
       },
       expiresAt: matchFull.expiresAt.toISOString(),
     };
