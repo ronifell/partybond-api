@@ -77,8 +77,8 @@ model User {
   name          String
   age           Int
   photoUrl      String?    @map("photo_url")
-  // In-app goal / what the player is looking for (max 60 chars in app validation).
-  lookingFor    String?    @map("looking_for") @db.VarChar(60)
+  // In-app goal / what the player is looking for (max 200 chars in app validation).
+  lookingFor    String?    @map("looking_for") @db.VarChar(200)
 
   selectedGame  String?    @map("selected_game")
   state         UserState  @default(idle)

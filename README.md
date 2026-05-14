@@ -36,7 +36,7 @@ All under `/api/v1`. Bearer JWT required unless noted.
 | POST | `/auth/register` | Create account (email, password, name, age). Returns `{ token, user }`. Public. |
 | POST | `/auth/login` | Log in. Returns `{ token, user }`. Public. |
 | GET | `/auth/me` | Current user (with `gameProfiles`). |
-| PATCH | `/users/me` | Update name, age, locale, selectedGame, **lookingFor** (≤60 chars). |
+| PATCH | `/users/me` | Update name, age, locale, selectedGame, **lookingFor** (≤200 chars). |
 | POST | `/users/me/photo` | Upload profile photo (`multipart/form-data`, field `photo`). |
 | PUT | `/users/me/fcm-token` | Save / clear FCM token. |
 | PUT | `/users/me/game-profile` | Set `{ gameId, nickname, playerId }`. Also sets `selectedGame`. |

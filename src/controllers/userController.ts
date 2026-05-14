@@ -42,7 +42,7 @@ const updateProfileFields = z.object({
   locale: z.enum(['en', 'pt']).optional(),
   selectedGame: z.string().optional(),
   lookingFor: z
-    .union([z.string().max(60), z.literal(''), z.null()])
+    .union([z.string().max(200), z.literal(''), z.null()])
     .optional()
     .transform((v) => {
       if (v === undefined) return undefined;
