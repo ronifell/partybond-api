@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -56,9 +57,23 @@ userRouter.patch(
   requireAuth,
   validate(updateProfileSchema),
   asyncHandler(async (req, res) => {
+    const b = req.body as z.infer<typeof updateProfileSchema>;
+    const data: Prisma.UserUpdateInput = {};
+    if (b.name !== undefined) data.name = b.name;
+    if (b.age !== undefined) data.age = b.age;
+    if (b.locale !== undefined) data.locale = b.locale;
+    if (b.selectedGame !== undefined) data.selectedGame = b.selectedGame;
+    if (b.lookingFor !== undefined) data.lookingFor = b.lookingFor;
+
+    if (Object.keys(data).length === 0) {
+      const user = await loadUserById(req.userId!);
+      res.json({ user: toPublicUser(user) });
+      return;
+    }
+
     const updated = await prisma.user.update({
       where: { id: req.userId! },
-      data: req.body,
+      data,
       include: { gameProfiles: true },
     });
     res.json({ user: toPublicUser(updated) });
