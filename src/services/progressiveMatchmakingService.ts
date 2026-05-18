@@ -75,7 +75,7 @@ export async function joinGlobalQueue(
   }, TX_OPTIONS);
 
   void track('queue_join', userId, { gameId: input.gameId, progressive: true });
-  void tryMatchGlobalQueue(input.gameId);
+  await tryMatchGlobalQueue(input.gameId);
 }
 
 export async function leaveGlobalQueue(userId: string) {
@@ -136,12 +136,11 @@ async function tryCreateProgressiveMatch(gameId: string): Promise<boolean> {
       if (!areCompatible(a, b)) continue;
 
       const matchId = await prisma.$transaction(async (tx: Tx) => {
-        const locked = await tx.$queryRaw<Array<{ id: string; user_id: string }>>`
-          SELECT id, user_id FROM "global_queue_entries"
-          WHERE game_id = ${gameId} AND user_id IN (${a.userId}, ${b.userId})
-          FOR UPDATE SKIP LOCKED
-        `;
-        if (locked.length < 2) return null;
+        const entryA = await tx.globalQueueEntry.findUnique({ where: { userId: a.userId } });
+        const entryB = await tx.globalQueueEntry.findUnique({ where: { userId: b.userId } });
+        if (!entryA || !entryB || entryA.gameId !== gameId || entryB.gameId !== gameId) {
+          return null;
+        }
 
         const users = await tx.user.findMany({
           where: { id: { in: [a.userId, b.userId] } },
