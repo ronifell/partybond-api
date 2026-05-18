@@ -2,9 +2,9 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../config/database';
 import { HttpError } from '../utils/httpError';
 import { logger } from '../utils/logger';
-import { sendPush } from './pushService';
 import { track } from './analyticsService';
-import { emitToUser, emitToSession } from '../socket';
+import { emitMatchCreated } from './matchNotifyService';
+import { recordRecentPlayersFromMatch } from './recentPlayerService';
 import { TX_OPTIONS } from '../config/prismaTx';
 
 const MATCH_TTL_MIN = 15;
@@ -89,80 +89,10 @@ export async function tryCreateMatchForSession(sessionId: string) {
     return match;
   }, TX_OPTIONS);
 
-  if (!result) return null;
-
-  // Side-effects post-commit (analytics, push, socket).
-  const matchFull = await prisma.match.findUnique({
-    where: { id: result.id },
-    include: {
-      userA: { include: { gameProfiles: true } },
-      userB: { include: { gameProfiles: true } },
-      session: true,
-    },
-  });
-
-  if (matchFull) {
-    const game = matchFull.session.gameId;
-    const profileFor = (u: typeof matchFull.userA) =>
-      u.gameProfiles.find((p) => p.gameId === game) ?? null;
-
-    const payloadForA = {
-      matchId: matchFull.id,
-      sessionId: matchFull.sessionId,
-      gameId: game,
-      opponent: {
-        id: matchFull.userB.id,
-        name: matchFull.userB.name,
-        photoUrl: matchFull.userB.photoUrl,
-        nickname: profileFor(matchFull.userB)?.nickname ?? null,
-        playerId: profileFor(matchFull.userB)?.playerId ?? null,
-        lookingFor: matchFull.userB.lookingFor ?? null,
-      },
-      expiresAt: matchFull.expiresAt.toISOString(),
-    };
-    const payloadForB = {
-      matchId: matchFull.id,
-      sessionId: matchFull.sessionId,
-      gameId: game,
-      opponent: {
-        id: matchFull.userA.id,
-        name: matchFull.userA.name,
-        photoUrl: matchFull.userA.photoUrl,
-        nickname: profileFor(matchFull.userA)?.nickname ?? null,
-        playerId: profileFor(matchFull.userA)?.playerId ?? null,
-        lookingFor: matchFull.userA.lookingFor ?? null,
-      },
-      expiresAt: matchFull.expiresAt.toISOString(),
-    };
-
-    emitToUser(matchFull.userAId, 'match:created', payloadForA);
-    emitToUser(matchFull.userBId, 'match:created', payloadForB);
-    emitToSession(matchFull.sessionId, 'session:match', { matchId: matchFull.id });
-
-    // Fire-and-forget push
-    void Promise.allSettled([
-      sendPush(
-        matchFull.userAId,
-        {
-          title: 'Match found!',
-          body: `You were paired with ${matchFull.userB.name}.`,
-          data: { type: 'match_start', matchId: matchFull.id },
-        },
-        'match_found',
-      ),
-      sendPush(
-        matchFull.userBId,
-        {
-          title: 'Match found!',
-          body: `You were paired with ${matchFull.userA.name}.`,
-          data: { type: 'match_start', matchId: matchFull.id },
-        },
-        'match_found',
-      ),
-    ]);
-
-    void track('match_start', matchFull.userAId, { matchId: matchFull.id });
-    void track('match_start', matchFull.userBId, { matchId: matchFull.id });
+  if (result) {
+    await emitMatchCreated(result.id);
+    void track('match_start', result.userAId, { matchId: result.id });
+    void track('match_start', result.userBId, { matchId: result.id });
   }
 
   return result;
@@ -190,28 +120,40 @@ export async function tryDrainSession(sessionId: string): Promise<void> {
  * End a match (manual completion or expiry).
  */
 export async function endMatch(matchId: string, reason: 'finished' | 'expired') {
-  return prisma.$transaction(async (tx: Tx) => {
-    const match = await tx.match.findUnique({ where: { id: matchId } });
+  const result = await prisma.$transaction(async (tx: Tx) => {
+    const match = await tx.match.findUnique({
+      where: { id: matchId },
+      include: { session: { select: { gameId: true } } },
+    });
     if (!match) throw HttpError.notFound('Match not found');
-    if (match.status !== 'active') return match;
+    if (match.status !== 'active') return { updated: match, recordRecent: false as const };
 
     const updated = await tx.match.update({
       where: { id: matchId },
-      data: {
-        status: reason,
-        endedAt: new Date(),
-      },
+      data: { status: reason, endedAt: new Date() },
     });
 
     await tx.user.updateMany({
       where: { id: { in: [match.userAId, match.userBId] } },
-      data: {
-        state: 'idle',
-        currentMatchId: null,
-        currentSessionId: null,
-      },
+      data: { state: 'idle', currentMatchId: null, currentSessionId: null },
     });
 
-    return updated;
+    return {
+      updated,
+      recordRecent: {
+        userAId: match.userAId,
+        userBId: match.userBId,
+        gameId: match.session.gameId,
+      },
+    };
   }, TX_OPTIONS);
+
+  if (result.recordRecent) {
+    void recordRecentPlayersFromMatch(
+      result.recordRecent.userAId,
+      result.recordRecent.userBId,
+      result.recordRecent.gameId,
+    );
+  }
+  return result.updated;
 }

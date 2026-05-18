@@ -11,6 +11,8 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/httpError';
 import { toPublicUser, loadUserById } from '../services/authService';
 import { track } from '../services/analyticsService';
+import { listRecentPlayers } from '../services/recentPlayerService';
+import { getBlockedUserIds } from '../services/blockService';
 import { env } from '../config/env';
 
 export const userRouter = Router();
@@ -189,6 +191,48 @@ userRouter.get(
       state: user.state,
       currentSessionId: user.currentSessionId,
       currentMatchId: user.currentMatchId,
+    });
+  }),
+);
+
+userRouter.get(
+  '/me/recent-players',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const players = await listRecentPlayers(req.userId!);
+    res.json({ players });
+  }),
+);
+
+userRouter.get(
+  '/:id/public',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const viewerId = req.userId!;
+    const targetId = req.params.id;
+    const blocked = await getBlockedUserIds(viewerId);
+    if (blocked.has(targetId)) throw HttpError.notFound('User not found');
+
+    const user = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: {
+        id: true,
+        name: true,
+        photoUrl: true,
+        lookingFor: true,
+        lastSeenAt: true,
+        gameProfiles: true,
+      },
+    });
+    if (!user) throw HttpError.notFound('User not found');
+
+    const onlineThreshold = Date.now() - 5 * 60_000;
+    res.json({
+      user: {
+        ...user,
+        isOnline: (user.lastSeenAt?.getTime() ?? 0) > onlineThreshold,
+        lastSeenAt: user.lastSeenAt?.toISOString() ?? null,
+      },
     });
   }),
 );

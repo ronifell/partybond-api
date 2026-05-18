@@ -15,7 +15,13 @@ export type AnalyticsEventName =
   | 'match_start'
   | 'interaction_sent'
   | 'match_end'
-  | 'match_timeout';
+  | 'match_timeout'
+  | 'group_created'
+  | 'group_invite_sent'
+  | 'group_invite_accepted'
+  | 'group_invite_declined'
+  | 'user_blocked'
+  | 'user_reported';
 
 export async function track(
   name: AnalyticsEventName,

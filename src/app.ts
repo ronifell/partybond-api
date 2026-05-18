@@ -14,6 +14,10 @@ import { userRouter } from './controllers/userController';
 import { gameRouter } from './controllers/gameController';
 import { sessionRouter } from './controllers/sessionController';
 import { matchRouter } from './controllers/matchController';
+import { matchmakingRouter } from './controllers/matchmakingController';
+import { groupsRouter } from './controllers/groupsController';
+import { chatRouter } from './controllers/chatController';
+import { moderationRouter } from './controllers/moderationController';
 
 export function buildApp(): express.Express {
   const app = express();
@@ -74,6 +78,10 @@ export function buildApp(): express.Express {
   app.use('/api/v1/games', gameRouter);
   app.use('/api/v1/sessions', sessionRouter);
   app.use('/api/v1/matches', matchRouter);
+  app.use('/api/v1/matchmaking', matchmakingRouter);
+  app.use('/api/v1/groups', groupsRouter);
+  app.use('/api/v1/chats', chatRouter);
+  app.use('/api/v1/moderation', moderationRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

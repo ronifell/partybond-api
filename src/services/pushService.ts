@@ -6,9 +6,17 @@ import { logger } from '../utils/logger';
 const COOLDOWN_MS: Record<PushChannel, number> = {
   match_found: 60_000,
   interaction: 12_000,
+  group_invite: 30_000,
+  session_reminder: 60_000,
+  squad_fill_invite: 30_000,
 };
 
-export type PushChannel = 'match_found' | 'interaction';
+export type PushChannel =
+  | 'match_found'
+  | 'interaction'
+  | 'group_invite'
+  | 'session_reminder'
+  | 'squad_fill_invite';
 
 const lastSentAt = new Map<string, number>();
 

@@ -3,6 +3,8 @@ import { prisma } from '../config/database';
 import { logger } from '../utils/logger';
 import { endMatch } from './matchmakingService';
 import { track } from './analyticsService';
+import { tryMatchGlobalQueue } from './progressiveMatchmakingService';
+import { sendSessionReminders } from './scheduleService';
 
 /** Every minute: expire matches past their TTL. */
 async function expireMatches(): Promise<void> {
@@ -48,9 +50,21 @@ async function resetInconsistentUsers(): Promise<void> {
     WHERE
       (state = 'in_match' AND (current_match_id IS NULL OR current_match_id NOT IN (SELECT id FROM matches WHERE status = 'active')))
       OR
-      (state = 'in_queue' AND current_session_id IS NULL)
+      (state = 'in_queue' AND current_session_id IS NULL AND id NOT IN (SELECT user_id FROM global_queue_entries))
   `);
   if (fixed) logger.info({ fixed }, 'Reset inconsistent users');
+}
+
+/** Every 10s: progressive matchmaking for games with waiters. */
+async function runProgressiveMatchmaking(): Promise<void> {
+  const entries = await prisma.globalQueueEntry.findMany({ select: { gameId: true } });
+  const counts = new Map<string, number>();
+  for (const e of entries) {
+    counts.set(e.gameId, (counts.get(e.gameId) ?? 0) + 1);
+  }
+  for (const [gameId, count] of counts) {
+    if (count >= 2) void tryMatchGlobalQueue(gameId);
+  }
 }
 
 export function startCleanupJobs(): void {
@@ -58,5 +72,7 @@ export function startCleanupJobs(): void {
   cron.schedule('*/5 * * * *', () => void activateScheduledSessions());
   cron.schedule('0 * * * *', () => void cleanOldSessions());
   cron.schedule('15 * * * *', () => void resetInconsistentUsers());
+  cron.schedule('*/5 * * * *', () => void sendSessionReminders());
+  cron.schedule('* * * * *', () => void runProgressiveMatchmaking());
   logger.info('Cleanup cron jobs started.');
 }

@@ -3,6 +3,9 @@ import type { Server as HttpServer } from 'node:http';
 import { verifyJwt } from '../utils/jwt';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { prisma } from '../config/database';
+import { emitTyping } from '../services/chatService';
+import { tryMatchGlobalQueue } from '../services/progressiveMatchmakingService';
 
 let io: IoServer | null = null;
 
@@ -31,7 +34,18 @@ export function initSocket(httpServer: HttpServer): IoServer {
   io.on('connection', (socket: Socket) => {
     const userId = socket.data.userId as string;
     socket.join(`user:${userId}`);
+    void prisma.user.update({ where: { id: userId }, data: { lastSeenAt: new Date() } });
     logger.debug({ userId, sid: socket.id }, 'socket connected');
+
+    socket.on('presence:heartbeat', () => {
+      void prisma.user.update({ where: { id: userId }, data: { lastSeenAt: new Date() } });
+    });
+
+    socket.on('chat:typing', (payload: { conversationId?: string; isTyping?: boolean }) => {
+      if (typeof payload?.conversationId === 'string') {
+        emitTyping(payload.conversationId, userId, !!payload.isTyping);
+      }
+    });
 
     socket.on('session:subscribe', (sessionId: string) => {
       if (typeof sessionId === 'string') socket.join(`session:${sessionId}`);
