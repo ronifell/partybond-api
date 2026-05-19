@@ -173,6 +173,18 @@ export async function inviteToGroup(
   const group = await prisma.group.findUnique({ where: { id: groupId } });
   if (!group) throw HttpError.notFound('Group not found');
 
+  const pendingInvite = await prisma.groupInvite.findFirst({
+    where: {
+      groupId,
+      inviteeId,
+      status: 'pending',
+      expiresAt: { gt: new Date() },
+    },
+  });
+  if (pendingInvite) {
+    return { inviteId: pendingInvite.id, status: pendingInvite.status };
+  }
+
   const invite = await prisma.groupInvite.create({
     data: {
       groupId,
