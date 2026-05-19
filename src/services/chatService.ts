@@ -79,30 +79,62 @@ export async function listConversations(userId: string) {
         },
       },
     },
-    orderBy: { conversation: { createdAt: 'desc' } },
   });
 
-  return parts.map((p) => {
-    const c = p.conversation;
-    const last = c.messages[0];
-    const base = formatConversation(
-      {
-        id: c.id,
-        type: c.type,
-        groupId: c.groupId,
-        participants: c.participants,
-      },
-      userId,
-    );
-    return {
-      ...base,
-      title: c.type === 'group' ? (c.group?.name ?? base.title) : base.title,
-      photoUrl: c.type === 'group' ? c.group?.photoUrl : base.peer?.photoUrl,
-      lastMessage: last
-        ? { body: last.body, createdAt: last.createdAt.toISOString(), senderId: last.senderId }
-        : null,
-    };
-  });
+  const convIds = parts.map((p) => p.conversationId);
+  const pinnedRows =
+    convIds.length > 0
+      ? await prisma.pinnedMessage.findMany({
+          where: { conversationId: { in: convIds } },
+          select: { conversationId: true },
+        })
+      : [];
+  const pinnedSet = new Set(pinnedRows.map((r) => r.conversationId));
+
+  const rows = await Promise.all(
+    parts.map(async (p) => {
+      const c = p.conversation;
+      const last = c.messages[0];
+      const unreadCount = await prisma.message.count({
+        where: {
+          conversationId: c.id,
+          senderId: { not: userId },
+          ...(p.lastReadAt ? { createdAt: { gt: p.lastReadAt } } : {}),
+        },
+      });
+      const base = formatConversation(
+        {
+          id: c.id,
+          type: c.type,
+          groupId: c.groupId,
+          participants: c.participants,
+        },
+        userId,
+      );
+      const lastSender = last
+        ? c.participants.find((x) => x.user.id === last.senderId)?.user
+        : null;
+      return {
+        ...base,
+        title: c.type === 'group' ? (c.group?.name ?? base.title) : base.title,
+        photoUrl: c.type === 'group' ? c.group?.photoUrl : base.peer?.photoUrl,
+        unreadCount,
+        isPinned: pinnedSet.has(c.id),
+        lastMessage: last
+          ? {
+              body: last.body,
+              createdAt: last.createdAt.toISOString(),
+              senderId: last.senderId,
+              senderName: lastSender?.name ?? null,
+            }
+          : null,
+        sortAt: last?.createdAt.toISOString() ?? c.createdAt.toISOString(),
+      };
+    }),
+  );
+
+  rows.sort((a, b) => b.sortAt.localeCompare(a.sortAt));
+  return rows.map(({ sortAt: _sortAt, ...rest }) => rest);
 }
 
 export async function listMessages(conversationId: string, userId: string, cursor?: string) {
