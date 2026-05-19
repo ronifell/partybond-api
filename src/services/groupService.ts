@@ -63,25 +63,37 @@ export async function listGroups(userId: string) {
           members: {
             include: { user: { select: { id: true, name: true, photoUrl: true } } },
           },
+          sessions: {
+            where: { startsAt: { gte: new Date() } },
+            orderBy: { startsAt: 'asc' },
+            take: 1,
+          },
           _count: { select: { members: true } },
         },
       },
     },
     orderBy: { joinedAt: 'desc' },
   });
-  return memberships.map((m) => ({
-    id: m.group.id,
-    name: m.group.name,
-    photoUrl: m.group.photoUrl,
-    memberCount: m.group._count.members,
-    members: m.group.members.map((mb) => ({
-      id: mb.user.id,
-      name: mb.user.name,
-      photoUrl: mb.user.photoUrl,
-      role: mb.role,
-    })),
-    createdAt: m.group.createdAt.toISOString(),
-  }));
+  return memberships.map((m) => {
+    const next = m.group.sessions[0];
+    return {
+      id: m.group.id,
+      name: m.group.name,
+      photoUrl: m.group.photoUrl,
+      createdById: m.group.createdById,
+      memberCount: m.group._count.members,
+      members: m.group.members.map((mb) => ({
+        id: mb.user.id,
+        name: mb.user.name,
+        photoUrl: mb.user.photoUrl,
+        role: mb.role,
+      })),
+      createdAt: m.group.createdAt.toISOString(),
+      nextSession: next
+        ? { id: next.id, startsAt: next.startsAt.toISOString() }
+        : null,
+    };
+  });
 }
 
 export async function getGroupDetail(groupId: string, userId: string) {
