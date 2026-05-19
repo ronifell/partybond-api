@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../utils/asyncHandler';
 import { validate } from '../middlewares/validate';
 import { requireAuth } from '../middlewares/auth';
@@ -17,6 +18,23 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email().toLowerCase(),
   password: z.string().min(1),
+});
+
+const forgotPasswordSchema = z.object({
+  identifier: z.string().min(2).max(120),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(16).max(256),
+  password: z.string().min(6).max(128),
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: { message: 'Too many attempts. Try again later.', code: 'rate_limited' } },
 });
 
 export const authRouter = Router();
@@ -47,5 +65,28 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const me = await authService.getMe(req.userId!);
     res.json({ user: me });
+  }),
+);
+
+authRouter.post(
+  '/forgot-password',
+  passwordResetLimiter,
+  validate(forgotPasswordSchema),
+  asyncHandler(async (req, res) => {
+    await authService.requestPasswordReset(req.body.identifier);
+    res.json({
+      ok: true,
+      message: 'If an account exists, a reset link has been sent.',
+    });
+  }),
+);
+
+authRouter.post(
+  '/reset-password',
+  passwordResetLimiter,
+  validate(resetPasswordSchema),
+  asyncHandler(async (req, res) => {
+    await authService.resetPassword(req.body.token, req.body.password);
+    res.json({ ok: true, message: 'Password updated. You can log in now.' });
   }),
 );

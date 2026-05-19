@@ -24,6 +24,12 @@ export const env = {
 
   uploadDir: process.env.UPLOAD_DIR ?? 'uploads',
   maxUploadSizeMb: Number(process.env.MAX_UPLOAD_SIZE_MB ?? 5),
+
+  /** Resend.com API key — when set, password reset emails are sent. */
+  resendApiKey: process.env.RESEND_API_KEY ?? '',
+  emailFrom: process.env.EMAIL_FROM ?? 'Partybond <onboarding@resend.dev>',
+  /** Deep link / web URL base for reset links (no trailing slash). */
+  resetLinkBase: process.env.RESET_LINK_BASE ?? 'partybond://reset-password',
 };
 
 export const isProd = env.nodeEnv === 'production';

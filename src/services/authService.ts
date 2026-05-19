@@ -1,7 +1,10 @@
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database';
+import { env } from '../config/env';
 import { signJwt } from '../utils/jwt';
 import { HttpError } from '../utils/httpError';
+import { sendPasswordResetEmail } from './emailService';
 
 export interface PublicUser {
   id: string;
@@ -94,6 +97,92 @@ export async function login(input: { email: string; password: string }) {
 export async function getMe(userId: string) {
   const user = await loadUserById(userId);
   return toPublicUser(user);
+}
+
+const RESET_TOKEN_BYTES = 32;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function hashResetToken(raw: string): string {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+async function findUserByIdentifier(identifier: string) {
+  const trimmed = identifier.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes('@')) {
+    return prisma.user.findUnique({ where: { email: trimmed.toLowerCase() } });
+  }
+
+  const byName = await prisma.user.findFirst({
+    where: { name: { equals: trimmed, mode: 'insensitive' } },
+  });
+  if (byName) return byName;
+
+  const profile = await prisma.userGameProfile.findFirst({
+    where: { nickname: { equals: trimmed, mode: 'insensitive' } },
+    include: { user: true },
+  });
+  return profile?.user ?? null;
+}
+
+/** Always resolves without revealing whether the account exists. */
+export async function requestPasswordReset(identifier: string) {
+  const user = await findUserByIdentifier(identifier);
+  if (!user) return { ok: true as const };
+
+  const rawToken = crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
+  const tokenHash = hashResetToken(rawToken);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  await prisma.passwordResetToken.updateMany({
+    where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+    data: { usedAt: new Date() },
+  });
+
+  await prisma.passwordResetToken.create({
+    data: { userId: user.id, tokenHash, expiresAt },
+  });
+
+  const resetUrl = `${env.resetLinkBase}?token=${encodeURIComponent(rawToken)}`;
+  try {
+    await sendPasswordResetEmail(user.email, resetUrl);
+  } catch {
+    // Do not leak email delivery failures to the client.
+  }
+
+  return { ok: true as const };
+}
+
+export async function resetPassword(token: string, password: string) {
+  const tokenHash = hashResetToken(token.trim());
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash },
+    include: { user: true },
+  });
+
+  if (!record || record.usedAt || record.expiresAt < new Date()) {
+    throw HttpError.badRequest('Invalid or expired reset link', 'invalid_reset_token');
+  }
+
+  const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_ROUNDS);
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash },
+    }),
+    prisma.passwordResetToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    }),
+    prisma.passwordResetToken.updateMany({
+      where: { userId: record.userId, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+  ]);
+
+  return { ok: true as const };
 }
 
 export { toPublicUser };

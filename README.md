@@ -34,6 +34,8 @@ All under `/api/v1`. Bearer JWT required unless noted.
 | Method | Path | Description |
 |---|---|---|
 | POST | `/auth/register` | Create account (email, password, name, age). Returns `{ token, user }`. Public. |
+| POST | `/auth/forgot-password` | Request reset link `{ identifier }`. Always returns success (no account enumeration). |
+| POST | `/auth/reset-password` | Set new password `{ token, password }`. |
 | POST | `/auth/login` | Log in. Returns `{ token, user }`. Public. |
 | GET | `/auth/me` | Current user (with `gameProfiles`). |
 | PATCH | `/users/me` | Update name, age, locale, selectedGame, **lookingFor** (≤200 chars). |
