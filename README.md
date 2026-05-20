@@ -39,6 +39,14 @@ Set in `.env` (see `.env.example`):
 
 Requires **2-Step Verification** on the Google account. Emails can be sent to **any** registered user address. Restart the API after changing `.env` (e.g. `pm2 restart partybond-api`).
 
+### Google Sign-In
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials.
+2. Create **OAuth client ID** → type **Web** → copy to `GOOGLE_WEB_CLIENT_ID` (backend `.env`) and `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (frontend `.env`).
+3. Create **Android** (`com.partybond.app` + SHA-1) and **iOS** (`com.partybond.app`) clients for release builds.
+4. Configure **OAuth consent screen** (add test users while in Testing mode).
+5. Run `npx prisma migrate deploy` for the `google_id` column.
+
 ## API surface (REST)
 
 All under `/api/v1`. Bearer JWT required unless noted.
@@ -49,6 +57,7 @@ All under `/api/v1`. Bearer JWT required unless noted.
 | POST | `/auth/forgot-password` | Send 6-digit code to email `{ identifier }`. Always returns success (no account enumeration). |
 | POST | `/auth/reset-password` | Set new password `{ identifier, code, password }`. |
 | POST | `/auth/login` | Log in. Returns `{ token, user }`. Public. |
+| POST | `/auth/google` | Google Sign-In `{ idToken, locale? }`. Returns `{ token, user }`. Public. |
 | GET | `/auth/me` | Current user (with `gameProfiles`). |
 | PATCH | `/users/me` | Update name, age, locale, selectedGame, **lookingFor** (≤200 chars). |
 | POST | `/users/me/photo` | Upload profile photo (`multipart/form-data`, field `photo`). |

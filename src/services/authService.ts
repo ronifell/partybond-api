@@ -4,6 +4,7 @@ import { prisma } from '../config/database';
 import { signJwt } from '../utils/jwt';
 import { HttpError } from '../utils/httpError';
 import { sendPasswordResetCode } from './emailService';
+import { verifyGoogleIdToken } from './googleAuthService';
 
 export interface PublicUser {
   id: string;
@@ -77,6 +78,55 @@ export async function register(input: {
 
   const token = signJwt({ sub: created.id, email: created.email });
   return { token, user: toPublicUser(created) };
+}
+
+async function randomPasswordHash(): Promise<string> {
+  return bcrypt.hash(crypto.randomBytes(32).toString('hex'), PASSWORD_HASH_ROUNDS);
+}
+
+/** Sign in or register via Google ID token (from mobile OAuth). */
+export async function loginWithGoogle(idToken: string, locale?: string) {
+  const profile = await verifyGoogleIdToken(idToken);
+
+  let user = await prisma.user.findFirst({
+    where: {
+      OR: [{ googleId: profile.googleId }, { email: profile.email }],
+    },
+    include: { gameProfiles: true },
+  });
+
+  if (user) {
+    if (user.googleId && user.googleId !== profile.googleId) {
+      throw HttpError.conflict('Email linked to another Google account', 'google_account_mismatch');
+    }
+    if (!user.googleId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId: profile.googleId,
+          photoUrl: user.photoUrl ?? profile.photoUrl,
+          name: user.name || profile.name,
+        },
+        include: { gameProfiles: true },
+      });
+    }
+  } else {
+    user = await prisma.user.create({
+      data: {
+        email: profile.email,
+        googleId: profile.googleId,
+        passwordHash: await randomPasswordHash(),
+        name: profile.name,
+        age: 18,
+        photoUrl: profile.photoUrl,
+        locale: locale ?? 'en',
+      },
+      include: { gameProfiles: true },
+    });
+  }
+
+  const token = signJwt({ sub: user.id, email: user.email });
+  return { token, user: toPublicUser(user) };
 }
 
 export async function login(input: { email: string; password: string }) {

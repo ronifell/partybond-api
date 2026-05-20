@@ -128,6 +128,7 @@ model Game {
 model User {
   id               String    @id @default(cuid())
   email            String    @unique
+  googleId         String?   @unique @map("google_id")
   passwordHash     String    @map("password_hash")
   name             String
   age              Int

@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 
 export type AnalyticsEventName =
   | 'login'
+  | 'login_google'
   | 'register'
   | 'onboarding_complete'
   | 'game_selected'

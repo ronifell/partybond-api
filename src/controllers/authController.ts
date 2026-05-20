@@ -20,6 +20,11 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const googleAuthSchema = z.object({
+  idToken: z.string().min(10),
+  locale: z.string().optional(),
+});
+
 const forgotPasswordSchema = z.object({
   identifier: z.string().min(2).max(120),
 });
@@ -56,6 +61,16 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const result = await authService.login(req.body);
     void track('login', result.user.id);
+    res.json(result);
+  }),
+);
+
+authRouter.post(
+  '/google',
+  validate(googleAuthSchema),
+  asyncHandler(async (req, res) => {
+    const result = await authService.loginWithGoogle(req.body.idToken, req.body.locale);
+    void track('login_google', result.user.id);
     res.json(result);
   }),
 );

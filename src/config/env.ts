@@ -60,6 +60,16 @@ export const env = {
       return !!(this.username && this.password);
     },
   },
+
+  google: {
+    clientIds: [
+      process.env.GOOGLE_WEB_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+    ]
+      .map((id) => cleanEnv(id))
+      .filter(Boolean),
+  },
 };
 
 export const isProd = env.nodeEnv === 'production';
