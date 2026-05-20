@@ -217,7 +217,9 @@ userRouter.get(
       where: { id: targetId },
       select: {
         id: true,
+        email: true,
         name: true,
+        age: true,
         photoUrl: true,
         lookingFor: true,
         lastSeenAt: true,
