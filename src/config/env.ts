@@ -25,9 +25,22 @@ export const env = {
   uploadDir: process.env.UPLOAD_DIR ?? 'uploads',
   maxUploadSizeMb: Number(process.env.MAX_UPLOAD_SIZE_MB ?? 5),
 
-  /** Resend.com API key — when set, password reset emails are sent. */
-  resendApiKey: process.env.RESEND_API_KEY ?? '',
-  emailFrom: process.env.EMAIL_FROM ?? 'Partybond <onboarding@resend.dev>',
+  mail: {
+    host: process.env.MAIL_HOST ?? 'smtp.gmail.com',
+    port: Number(process.env.MAIL_PORT ?? 587),
+    username: process.env.MAIL_USERNAME ?? '',
+    /** Gmail App Password (not your normal Gmail password). */
+    password: process.env.MAIL_PASSWORD ?? '',
+    fromName: process.env.MAIL_FROM_NAME ?? 'Partybond',
+    get from(): string {
+      const user = process.env.MAIL_USERNAME ?? '';
+      const name = process.env.MAIL_FROM_NAME ?? 'Partybond';
+      return user ? `${name} <${user}>` : name;
+    },
+    get isConfigured(): boolean {
+      return !!(process.env.MAIL_USERNAME && process.env.MAIL_PASSWORD);
+    },
+  },
 };
 
 export const isProd = env.nodeEnv === 'production';

@@ -27,6 +27,18 @@ See `.env.example`. Important:
 - `JWT_SECRET` — used to sign authentication tokens.
 - `FIREBASE_SERVICE_ACCOUNT_JSON` — single-line JSON of the service-account key (optional in dev — leaving it empty disables push without breaking the server).
 
+### Password reset email (Gmail SMTP)
+
+Set in `.env` (see `.env.example`):
+
+- `MAIL_HOST=smtp.gmail.com`
+- `MAIL_PORT=587`
+- `MAIL_USERNAME` — your Gmail address
+- `MAIL_PASSWORD` — [Gmail App Password](https://myaccount.google.com/apppasswords) (16 characters, not your normal Gmail password)
+- `MAIL_FROM_NAME` — optional display name (default `Partybond`)
+
+Requires **2-Step Verification** on the Google account. Emails can be sent to **any** registered user address. Restart the API after changing `.env` (e.g. `pm2 restart partybond-api`).
+
 ## API surface (REST)
 
 All under `/api/v1`. Bearer JWT required unless noted.

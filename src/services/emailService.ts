@@ -1,15 +1,28 @@
-import { logger } from '../utils/logger';
+import nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
+
+let transporter: Transporter | null = null;
+
+function getTransporter(): Transporter | null {
+  if (!env.mail.isConfigured) return null;
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: env.mail.host,
+      port: env.mail.port,
+      secure: env.mail.port === 465,
+      auth: {
+        user: env.mail.username,
+        pass: env.mail.password,
+      },
+    });
+  }
+  return transporter;
+}
 
 export async function sendPasswordResetCode(to: string, code: string): Promise<void> {
-  const apiKey = env.resendApiKey;
-  const from = env.emailFrom;
-
-  if (!apiKey) {
-    logger.info({ to, code }, 'Password reset code (set RESEND_API_KEY to send email)');
-    return;
-  }
-
+  const transport = getTransporter();
   const subject = 'Your Partybond password reset code';
   const html = `
     <p>Hi,</p>
@@ -18,19 +31,24 @@ export async function sendPasswordResetCode(to: string, code: string): Promise<v
     <p>This code expires in 15 minutes. If you did not request this, you can ignore this email.</p>
     <p>— Partybond</p>
   `;
+  const text = `Your Partybond password reset code is: ${code}\n\nThis code expires in 15 minutes.`;
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from, to: [to], subject, html }),
-  });
+  if (!transport) {
+    logger.info({ to, code }, 'Password reset code (configure MAIL_* in .env to send email)');
+    return;
+  }
 
-  if (!res.ok) {
-    const body = await res.text();
-    logger.error({ status: res.status, body }, 'Failed to send password reset email');
-    throw new Error('Failed to send email');
+  try {
+    await transport.sendMail({
+      from: env.mail.from,
+      to,
+      subject,
+      text,
+      html,
+    });
+    logger.info({ to }, 'Password reset code email sent');
+  } catch (err) {
+    logger.error({ err, to }, 'Failed to send password reset email via SMTP');
+    throw err;
   }
 }
