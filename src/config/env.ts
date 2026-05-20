@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+// Override shell/PM2 env so values in `.env` win (fixes stale MAIL_PASSWORD, etc.).
+dotenv.config({ override: true });
 
 const required = (name: string, value: string | undefined, fallback?: string): string => {
   if (value && value.length > 0) return value;
