@@ -46,6 +46,7 @@ Requires **2-Step Verification** on the Google account. Emails can be sent to **
 3. Create **Android** (`com.partybond.app` + SHA-1) and **iOS** (`com.partybond.app`) clients for release builds.
 4. Configure **OAuth consent screen** (add test users while in Testing mode).
 5. Run `npx prisma migrate deploy` for the `google_id` column.
+6. **Web client → Authorized redirect URIs:** only `https://` or `http://` URLs are allowed. Add `https://auth.expo.io/@YOUR_EXPO_USERNAME/partybond` for Expo Go. **Do not** add `partybond://` here — Google rejects it (“must contain a domain”). EAS/APK builds use Expo’s default redirect `com.partybond.app:/oauthredirect`, which is tied to your **Android** OAuth client (package + SHA-1), not the Web redirect list.
 
 ## API surface (REST)
 

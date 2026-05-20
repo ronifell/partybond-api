@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { HttpError } from '../utils/httpError';
+import { emitToUser } from '../socket';
 import { sendPush } from './pushService';
 
 function nextOccurrence(dayOfWeek: number, timeLocal: string, from: Date): Date {
@@ -17,11 +18,13 @@ export async function createGroupSchedule(
   userId: string,
   input: { dayOfWeek: number; timeLocal: string; frequency?: 'weekly' | 'biweekly'; timezone?: string },
 ) {
-  const member = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId, userId } },
+  const group = await prisma.group.findUnique({
+    where: { id: groupId },
+    select: { createdById: true },
   });
-  if (!member || member.role !== 'admin') {
-    throw HttpError.forbidden('Admin only', 'admin_required');
+  if (!group) throw HttpError.notFound('Group not found');
+  if (group.createdById !== userId) {
+    throw HttpError.forbidden('Only the group creator can schedule sessions', 'creator_required');
   }
 
   const schedule = await prisma.groupSchedule.create({
@@ -49,11 +52,15 @@ export async function createGroupSchedule(
 }
 
 export async function setRsvp(sessionId: string, userId: string, status: 'confirmed' | 'declined') {
-  const session = await prisma.groupSession.findUnique({ where: { id: sessionId } });
+  const session = await prisma.groupSession.findUnique({
+    where: { id: sessionId },
+    include: { group: { select: { id: true, name: true } } },
+  });
   if (!session) throw HttpError.notFound('Session not found');
 
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: session.groupId, userId } },
+    include: { user: { select: { name: true } } },
   });
   if (!member) throw HttpError.forbidden('Not a group member');
 
@@ -62,6 +69,24 @@ export async function setRsvp(sessionId: string, userId: string, status: 'confir
     create: { sessionId, userId, status },
     update: { status },
   });
+
+  const members = await prisma.groupMember.findMany({
+    where: { groupId: session.groupId },
+    select: { userId: true },
+  });
+
+  const payload = {
+    groupId: session.groupId,
+    groupName: session.group.name,
+    sessionId,
+    userId,
+    userName: member.user.name,
+    status,
+  };
+
+  for (const m of members) {
+    emitToUser(m.userId, 'group:session-rsvp', payload);
+  }
 }
 
 export async function sendSessionReminders(): Promise<void> {
