@@ -1,7 +1,8 @@
+import path from 'node:path';
 import dotenv from 'dotenv';
 
-// Override shell/PM2 env so values in `.env` win (fixes stale MAIL_PASSWORD, etc.).
-dotenv.config({ override: true });
+// Load `.env` from project root; override stale PM2/shell vars (e.g. wrong MAIL_PASSWORD).
+dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
 
 const required = (name: string, value: string | undefined, fallback?: string): string => {
   if (value && value.length > 0) return value;

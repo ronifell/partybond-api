@@ -16,6 +16,18 @@ async function main() {
 
   server.listen(env.port, () => {
     logger.info(`Partybond API ready at ${env.appUrl} (env=${env.nodeEnv})`);
+    if (env.mail.isConfigured) {
+      logger.info(
+        {
+          mailUser: env.mail.username,
+          passLength: env.mail.password.length,
+          cwd: process.cwd(),
+        },
+        env.mail.password.length === 16
+          ? 'SMTP mail configured'
+          : 'SMTP mail MISCONFIGURED — MAIL_PASSWORD must be 16 chars; run npm run test:smtp',
+      );
+    }
   });
 
   const shutdown = (signal: string) => {
