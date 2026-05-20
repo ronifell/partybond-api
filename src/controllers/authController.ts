@@ -25,7 +25,8 @@ const forgotPasswordSchema = z.object({
 });
 
 const resetPasswordSchema = z.object({
-  token: z.string().min(16).max(256),
+  identifier: z.string().min(2).max(120),
+  code: z.string().regex(/^\d{6}$/, 'Code must be 6 digits'),
   password: z.string().min(6).max(128),
 });
 
@@ -76,7 +77,7 @@ authRouter.post(
     await authService.requestPasswordReset(req.body.identifier);
     res.json({
       ok: true,
-      message: 'If an account exists, a reset link has been sent.',
+      message: 'If an account exists, a verification code has been sent.',
     });
   }),
 );
@@ -86,7 +87,7 @@ authRouter.post(
   passwordResetLimiter,
   validate(resetPasswordSchema),
   asyncHandler(async (req, res) => {
-    await authService.resetPassword(req.body.token, req.body.password);
+    await authService.resetPassword(req.body.identifier, req.body.code, req.body.password);
     res.json({ ok: true, message: 'Password updated. You can log in now.' });
   }),
 );

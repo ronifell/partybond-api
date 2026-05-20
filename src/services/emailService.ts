@@ -1,21 +1,21 @@
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
 
-export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+export async function sendPasswordResetCode(to: string, code: string): Promise<void> {
   const apiKey = env.resendApiKey;
   const from = env.emailFrom;
 
   if (!apiKey) {
-    logger.info({ to, resetUrl }, 'Password reset link (set RESEND_API_KEY to send email)');
+    logger.info({ to, code }, 'Password reset code (set RESEND_API_KEY to send email)');
     return;
   }
 
-  const subject = 'Reset your Partybond password';
+  const subject = 'Your Partybond password reset code';
   const html = `
     <p>Hi,</p>
-    <p>We received a request to reset your Partybond password.</p>
-    <p><a href="${resetUrl}">Reset your password</a></p>
-    <p>This link expires in 1 hour. If you did not request this, you can ignore this email.</p>
+    <p>Your password reset verification code is:</p>
+    <p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${code}</p>
+    <p>This code expires in 15 minutes. If you did not request this, you can ignore this email.</p>
     <p>— Partybond</p>
   `;
 

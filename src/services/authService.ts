@@ -1,10 +1,9 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database';
-import { env } from '../config/env';
 import { signJwt } from '../utils/jwt';
 import { HttpError } from '../utils/httpError';
-import { sendPasswordResetEmail } from './emailService';
+import { sendPasswordResetCode } from './emailService';
 
 export interface PublicUser {
   id: string;
@@ -99,11 +98,14 @@ export async function getMe(userId: string) {
   return toPublicUser(user);
 }
 
-const RESET_TOKEN_BYTES = 32;
-const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESET_CODE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-function hashResetToken(raw: string): string {
-  return crypto.createHash('sha256').update(raw).digest('hex');
+function hashResetCode(raw: string): string {
+  return crypto.createHash('sha256').update(raw.trim()).digest('hex');
+}
+
+function generateResetCode(): string {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
 }
 
 async function findUserByIdentifier(identifier: string) {
@@ -131,9 +133,9 @@ export async function requestPasswordReset(identifier: string) {
   const user = await findUserByIdentifier(identifier);
   if (!user) return { ok: true as const };
 
-  const rawToken = crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
-  const tokenHash = hashResetToken(rawToken);
-  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+  const code = generateResetCode();
+  const tokenHash = hashResetCode(code);
+  const expiresAt = new Date(Date.now() + RESET_CODE_TTL_MS);
 
   await prisma.passwordResetToken.updateMany({
     where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
@@ -144,9 +146,8 @@ export async function requestPasswordReset(identifier: string) {
     data: { userId: user.id, tokenHash, expiresAt },
   });
 
-  const resetUrl = `${env.resetLinkBase}?token=${encodeURIComponent(rawToken)}`;
   try {
-    await sendPasswordResetEmail(user.email, resetUrl);
+    await sendPasswordResetCode(user.email, code);
   } catch {
     // Do not leak email delivery failures to the client.
   }
@@ -154,15 +155,25 @@ export async function requestPasswordReset(identifier: string) {
   return { ok: true as const };
 }
 
-export async function resetPassword(token: string, password: string) {
-  const tokenHash = hashResetToken(token.trim());
-  const record = await prisma.passwordResetToken.findUnique({
-    where: { tokenHash },
+export async function resetPassword(identifier: string, code: string, password: string) {
+  const user = await findUserByIdentifier(identifier);
+  if (!user) {
+    throw HttpError.badRequest('Invalid or expired code', 'invalid_reset_code');
+  }
+
+  const tokenHash = hashResetCode(code);
+  const record = await prisma.passwordResetToken.findFirst({
+    where: {
+      userId: user.id,
+      tokenHash,
+      usedAt: null,
+      expiresAt: { gt: new Date() },
+    },
     include: { user: true },
   });
 
-  if (!record || record.usedAt || record.expiresAt < new Date()) {
-    throw HttpError.badRequest('Invalid or expired reset link', 'invalid_reset_token');
+  if (!record) {
+    throw HttpError.badRequest('Invalid or expired code', 'invalid_reset_code');
   }
 
   const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_ROUNDS);
