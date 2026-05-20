@@ -6,6 +6,17 @@ const required = (name: string, value: string | undefined, fallback?: string): s
   throw new Error(`Missing required env var: ${name}`);
 };
 
+/** Trim whitespace and optional surrounding quotes from .env values. */
+function cleanEnv(value: string | undefined): string {
+  if (!value) return '';
+  return value.trim().replace(/^["']|["']$/g, '');
+}
+
+/** Gmail app passwords are 16 chars; Google often displays them with spaces. */
+function cleanAppPassword(value: string | undefined): string {
+  return cleanEnv(value).replace(/\s+/g, '');
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 4000),
@@ -26,19 +37,20 @@ export const env = {
   maxUploadSizeMb: Number(process.env.MAX_UPLOAD_SIZE_MB ?? 5),
 
   mail: {
-    host: process.env.MAIL_HOST ?? 'smtp.gmail.com',
-    port: Number(process.env.MAIL_PORT ?? 587),
-    username: process.env.MAIL_USERNAME ?? '',
+    host: cleanEnv(process.env.MAIL_HOST) || 'smtp.gmail.com',
+    port: Number(cleanEnv(process.env.MAIL_PORT) || 587),
+    username:
+      cleanEnv(process.env.MAIL_USERNAME) || cleanEnv(process.env.MAIL_USER) || '',
     /** Gmail App Password (not your normal Gmail password). */
-    password: process.env.MAIL_PASSWORD ?? '',
-    fromName: process.env.MAIL_FROM_NAME ?? 'Partybond',
+    password: cleanAppPassword(process.env.MAIL_PASSWORD),
+    fromName: cleanEnv(process.env.MAIL_FROM_NAME) || 'Partybond',
     get from(): string {
-      const user = process.env.MAIL_USERNAME ?? '';
-      const name = process.env.MAIL_FROM_NAME ?? 'Partybond';
+      const user = this.username;
+      const name = this.fromName;
       return user ? `${name} <${user}>` : name;
     },
     get isConfigured(): boolean {
-      return !!(process.env.MAIL_USERNAME && process.env.MAIL_PASSWORD);
+      return !!(this.username && this.password);
     },
   },
 };
