@@ -13,6 +13,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
     "test:integration": "tsx scripts/integration-test.ts",
+    "test:smtp": "tsx scripts/test-smtp.ts",
     "prisma:studio": "prisma studio",
     "lint": "echo \"add eslint later\""
   },
