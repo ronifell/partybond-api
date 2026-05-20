@@ -19,7 +19,8 @@ function cleanEnv(value: string | undefined): string {
 }
 
 function cleanAppPassword(value: string | undefined): string {
-  return cleanEnv(value).replace(/\s+/g, '');
+  const raw = cleanEnv(value);
+  return (raw.split(/\s+/)[0] ?? '').replace(/\s+/g, '');
 }
 
 const host = cleanEnv(process.env.MAIL_HOST) || 'smtp.gmail.com';

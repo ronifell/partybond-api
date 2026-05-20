@@ -17,7 +17,10 @@ function cleanEnv(value: string | undefined): string {
 
 /** Gmail app passwords are 16 chars; Google often displays them with spaces. */
 function cleanAppPassword(value: string | undefined): string {
-  return cleanEnv(value).replace(/\s+/g, '');
+  const raw = cleanEnv(value);
+  // Take only the first token — guards against pasted "password <onboarding@resend.dev>"
+  const token = raw.split(/\s+/)[0] ?? '';
+  return token.replace(/\s+/g, '');
 }
 
 export const env = {
