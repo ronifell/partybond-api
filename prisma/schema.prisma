@@ -163,6 +163,8 @@ model User {
   groupSessionRsvps     GroupSessionRsvp[]
   squadFillInvitesSent  SquadFillInvite[]         @relation("SquadFillSent")
   squadFillInvitesRecv  SquadFillInvite[]         @relation("SquadFillRecv")
+  sessionSquadInvitesSent SessionSquadInvite[]    @relation("SessionSquadInvitesSent")
+  sessionSquadInvitesRecv SessionSquadInvite[]    @relation("SessionSquadInvitesRecv")
   blocksInitiated       UserBlock[]               @relation("BlocksInitiated")
   blocksReceived        UserBlock[]               @relation("BlocksReceived")
   reportsFiled          UserReport[]              @relation("ReportsFiled")
@@ -220,8 +222,9 @@ model Session {
 
   game      Game         @relation(fields: [gameId], references: [id])
   createdBy User         @relation("CreatedSessions", fields: [createdById], references: [id])
-  queue     QueueEntry[]
-  matches   Match[]
+  queue        QueueEntry[]
+  matches      Match[]
+  squadInvites SessionSquadInvite[]
 
   @@index([gameId, status, scheduledAt])
   @@index([gameId, status, gameMode, skillTier])
@@ -483,6 +486,25 @@ model SquadFillInvite {
 
   @@index([inviteeId, status])
   @@map("squad_fill_invites")
+}
+
+/// Invite friends / recent players to a play session squad (home → criar equipe).
+model SessionSquadInvite {
+  id        String                @id @default(cuid())
+  sessionId String                @map("session_id")
+  inviterId String                @map("inviter_id")
+  inviteeId String                @map("invitee_id")
+  status    SquadFillInviteStatus @default(pending)
+  expiresAt DateTime              @map("expires_at")
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  inviter User    @relation("SessionSquadInvitesSent", fields: [inviterId], references: [id])
+  invitee User    @relation("SessionSquadInvitesRecv", fields: [inviteeId], references: [id])
+
+  @@unique([sessionId, inviteeId])
+  @@index([inviteeId, status])
+  @@map("session_squad_invites")
 }
 
 model UserBlock {

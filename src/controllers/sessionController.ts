@@ -7,6 +7,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/httpError';
 import { track } from '../services/analyticsService';
 import { tryDrainSession } from '../services/matchmakingService';
+import * as sessionSquadService from '../services/sessionSquadService';
 import { emitToSession } from '../socket';
 import { TX_OPTIONS } from '../config/prismaTx';
 
@@ -19,9 +20,7 @@ const createSessionSchema = z.object({
   title: z.string().min(2).max(60),
   gameMode: z.enum(['casual', 'competitive']),
   skillTier: skillTierEnum.optional().default('beginner'),
-  playersNeeded: z.coerce.number().int().refine((v) => v === 2 || v === 4, {
-    message: 'playersNeeded must be 2 or 4',
-  }),
+  playersNeeded: z.coerce.number().int().min(2).max(8).optional(),
   scheduledAt: z.coerce.date().optional(),
 });
 
@@ -89,6 +88,7 @@ sessionRouter.post(
 
     const scheduledAt = body.scheduledAt ?? new Date();
     const status = scheduledAt.getTime() <= Date.now() ? 'active' : 'open';
+    const playersNeeded = body.playersNeeded ?? Math.min(game.maxPlayers, 4);
 
     const session = await prisma.session.create({
       data: {
@@ -96,7 +96,7 @@ sessionRouter.post(
         title: body.title,
         gameMode: body.gameMode,
         skillTier: body.skillTier,
-        playersNeeded: body.playersNeeded,
+        playersNeeded,
         scheduledAt,
         status,
         createdById: req.userId!,
@@ -104,6 +104,43 @@ sessionRouter.post(
     });
     void track('session_created', req.userId!, { sessionId: session.id });
     res.status(201).json({ session });
+  }),
+);
+
+sessionRouter.get(
+  '/squad-invites/pending',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const invites = await sessionSquadService.listPendingSessionSquadInvites(req.userId!);
+    res.json({ invites });
+  }),
+);
+
+sessionRouter.post(
+  '/squad-invites/:inviteId/respond',
+  requireAuth,
+  validate(z.object({ accept: z.boolean() })),
+  asyncHandler(async (req, res) => {
+    const result = await sessionSquadService.respondSessionSquadInvite(
+      req.params.inviteId,
+      req.userId!,
+      (req.body as { accept: boolean }).accept,
+    );
+    res.json(result);
+  }),
+);
+
+sessionRouter.post(
+  '/:id/squad-invites',
+  requireAuth,
+  validate(z.object({ inviteeIds: z.array(z.string().min(1)).min(1).max(8) })),
+  asyncHandler(async (req, res) => {
+    const result = await sessionSquadService.sendSessionSquadInvites(
+      req.params.id,
+      req.userId!,
+      (req.body as { inviteeIds: string[] }).inviteeIds,
+    );
+    res.json(result);
   }),
 );
 

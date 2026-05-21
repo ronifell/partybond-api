@@ -169,6 +169,62 @@ async function main() {
     if (!players.some((p) => p.userId === userBId)) throw new Error('B not in A recent list');
     ok('Recent players populated', `${players.length} entries`);
 
+    // --- Create team / session squad invites ---
+    const squadSession = await req('POST', '/sessions', {
+      token: tokenA,
+      body: {
+        gameId,
+        title: `Squad Test ${ts}`,
+        gameMode: 'casual',
+        skillTier: 'beginner',
+        playersNeeded: 4,
+      },
+    });
+    const playSessionId = (squadSession.data.session as { id: string }).id;
+    ok('Play session created for squad', playSessionId.slice(0, 8) + '…');
+
+    const candidates = await req('GET', `/users/me/squad-candidates?gameId=${gameId}`, {
+      token: tokenA,
+    });
+    const candidateList = (candidates.data as { candidates: Array<{ userId: string }> }).candidates;
+    if (!candidateList.some((c) => c.userId === userBId)) {
+      throw new Error('User B should appear in squad candidates after match');
+    }
+    ok('Squad candidates list', `${candidateList.length} candidates, includes B`);
+
+    await req('POST', `/sessions/${playSessionId}/squad-invites`, {
+      token: tokenA,
+      body: { inviteeIds: [userBId] },
+    });
+    ok('Squad invite sent to B');
+
+    const pendingSquadB = await req('GET', '/sessions/squad-invites/pending', { token: tokenB });
+    const squadInvites = (pendingSquadB.data as {
+      invites: Array<{ id: string; inviter: { name: string }; session: { gameName: string } }>;
+    }).invites;
+    const squadInviteId = squadInvites[0]?.id;
+    if (!squadInviteId) throw new Error('no pending squad invite for B');
+    if (!squadInvites[0]!.inviter.name) throw new Error('inviter name missing');
+    ok('Pending squad invite for B', squadInvites[0]!.session.gameName);
+
+    await req('POST', `/sessions/squad-invites/${squadInviteId}/respond`, {
+      token: tokenB,
+      body: { accept: true },
+    });
+    ok('Squad invite accepted by B');
+
+    const stateAfter = await req('GET', '/users/me/state', { token: tokenB });
+    const sAfter = stateAfter.data as { state: string; currentSessionId: string | null };
+    if (sAfter.state !== 'in_queue' || sAfter.currentSessionId !== playSessionId) {
+      throw new Error(`B should be in_queue on session, got ${sAfter.state} ${sAfter.currentSessionId}`);
+    }
+    ok('Invitee joined session queue after accept');
+
+    const pendingAfter = await req('GET', '/sessions/squad-invites/pending', { token: tokenB });
+    const stillPending = (pendingAfter.data as { invites: unknown[] }).invites.length;
+    if (stillPending > 0) throw new Error('accepted invite should not stay pending');
+    ok('Squad invite cleared from pending');
+
     // --- Groups ---
     const grp = await req('POST', '/groups', {
       token: tokenA,

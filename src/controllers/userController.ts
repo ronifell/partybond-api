@@ -12,6 +12,7 @@ import { HttpError } from '../utils/httpError';
 import { toPublicUser, loadUserById } from '../services/authService';
 import { track } from '../services/analyticsService';
 import { listRecentPlayers } from '../services/recentPlayerService';
+import { listSquadCandidates } from '../services/sessionSquadService';
 import { getBlockedUserIds } from '../services/blockService';
 import { env } from '../config/env';
 
@@ -201,6 +202,17 @@ userRouter.get(
   asyncHandler(async (req, res) => {
     const players = await listRecentPlayers(req.userId!);
     res.json({ players });
+  }),
+);
+
+userRouter.get(
+  '/me/squad-candidates',
+  requireAuth,
+  validate(z.object({ gameId: z.string().min(1) }), 'query'),
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.query as { gameId: string };
+    const candidates = await listSquadCandidates(req.userId!, gameId);
+    res.json({ candidates });
   }),
 );
 
