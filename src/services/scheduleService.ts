@@ -27,6 +27,17 @@ export async function createGroupSchedule(
     throw HttpError.forbidden('Only the group creator can schedule sessions', 'creator_required');
   }
 
+  const existingUpcoming = await prisma.groupSession.findFirst({
+    where: { groupId, startsAt: { gte: new Date() } },
+    orderBy: { startsAt: 'asc' },
+  });
+  if (existingUpcoming) {
+    throw HttpError.conflict(
+      'A weekly session is already scheduled for this group',
+      'session_already_scheduled',
+    );
+  }
+
   const schedule = await prisma.groupSchedule.create({
     data: {
       groupId,
