@@ -11,10 +11,36 @@ async function main() {
       status: GameStatus.active,
       maxPlayers: 3,
     },
-    { id: 'valorant', name: 'Valorant', status: GameStatus.coming_soon, maxPlayers: 5 },
+    { id: 'valorant', name: 'Valorant', status: GameStatus.active, maxPlayers: 5 },
+    { id: 'cod_mobile', name: 'Call of Duty', status: GameStatus.active, maxPlayers: 5 },
+    {
+      id: 'league_of_legends',
+      name: 'League of Legends',
+      status: GameStatus.active,
+      maxPlayers: 5,
+    },
+    { id: 'fortnite', name: 'Fortnite', status: GameStatus.active, maxPlayers: 4 },
+    {
+      id: 'counter_strike_2',
+      name: 'Counter-Strike 2',
+      status: GameStatus.active,
+      maxPlayers: 5,
+    },
+    {
+      id: 'ea_sports_fc_26',
+      name: 'EA Sports FC 26',
+      status: GameStatus.active,
+      maxPlayers: 4,
+    },
+    { id: 'minecraft', name: 'Minecraft', status: GameStatus.active, maxPlayers: 4 },
+    { id: 'roblox', name: 'Roblox', status: GameStatus.active, maxPlayers: 4 },
     { id: 'pubg_mobile', name: 'PUBG Mobile', status: GameStatus.coming_soon, maxPlayers: 4 },
-    { id: 'mobile_legends', name: 'Mobile Legends', status: GameStatus.coming_soon, maxPlayers: 5 },
-    { id: 'cod_mobile', name: 'Call of Duty Mobile', status: GameStatus.coming_soon, maxPlayers: 5 },
+    {
+      id: 'mobile_legends',
+      name: 'Mobile Legends',
+      status: GameStatus.coming_soon,
+      maxPlayers: 5,
+    },
   ];
 
   for (const g of games) {
