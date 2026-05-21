@@ -17,59 +17,84 @@ export type SquadCandidate = {
   source: 'recent' | 'suggestion';
 };
 
+/** Skip integration / simulation accounts in squad pickers. */
+function isRealAppUser(email: string): boolean {
+  const e = email.toLowerCase();
+  if (e.endsWith('@partybond.test')) return false;
+  if (e.endsWith('@test.partybond')) return false;
+  if (/^test[a-z]_\d+@/.test(e)) return false;
+  if (e.includes('squad_leader_') || e.includes('squad_invitee_') || e.includes('squad_decline_')) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Players you can invite to a squad: real users from your recent-player history
+ * for this game (and online recent contacts who also have this game profile).
+ * Does not scan the whole user table.
+ */
 export async function listSquadCandidates(userId: string, gameId: string): Promise<SquadCandidate[]> {
   const blocked = await getBlockedUserIds(userId);
   const exclude = new Set([userId, ...blocked]);
-  const onlineThreshold = Date.now() - ONLINE_MS;
+  const onlineThreshold = new Date(Date.now() - ONLINE_MS);
 
-  const recent = await prisma.recentPlayer.findMany({
+  const recentRows = await prisma.recentPlayer.findMany({
     where: {
       ownerId: userId,
-      gameId,
       playerUserId: { notIn: [...exclude] },
     },
     orderBy: { lastPlayedAt: 'desc' },
-    take: 30,
+    take: 100,
     include: {
-      player: { select: { id: true, name: true, photoUrl: true, lastSeenAt: true } },
+      player: {
+        select: { id: true, name: true, email: true, photoUrl: true, lastSeenAt: true },
+      },
     },
   });
+
+  const profilesForGame = await prisma.userGameProfile.findMany({
+    where: {
+      gameId,
+      userId: {
+        in: recentRows.map((r) => r.playerUserId).filter((id) => !exclude.has(id)),
+      },
+    },
+    select: { userId: true, nickname: true },
+  });
+  const nicknameByUser = new Map(profilesForGame.map((p) => [p.userId, p.nickname]));
 
   const byUserId = new Map<string, SquadCandidate>();
 
-  for (const r of recent) {
-    byUserId.set(r.playerUserId, {
-      userId: r.playerUserId,
-      name: r.player.name,
-      photoUrl: r.photoUrl ?? r.player.photoUrl,
-      nickname: r.nickname,
-      isOnline: (r.player.lastSeenAt?.getTime() ?? 0) > onlineThreshold,
-      source: 'recent',
-    });
-  }
+  for (const r of recentRows) {
+    if (!isRealAppUser(r.player.email)) continue;
 
-  const profiles = await prisma.userGameProfile.findMany({
-    where: {
-      gameId,
-      userId: { notIn: [...exclude, ...byUserId.keys()] },
-    },
-    take: 40,
-    include: {
-      user: { select: { id: true, name: true, photoUrl: true, lastSeenAt: true } },
-    },
-  });
+    const hasThisGameProfile = nicknameByUser.has(r.playerUserId) || r.gameId === gameId;
+    if (!hasThisGameProfile) continue;
 
-  for (const p of profiles) {
-    const isOnline = (p.user.lastSeenAt?.getTime() ?? 0) > onlineThreshold;
-    if (!isOnline && byUserId.size >= 20) continue;
-    byUserId.set(p.userId, {
-      userId: p.userId,
-      name: p.user.name,
-      photoUrl: p.user.photoUrl,
-      nickname: p.nickname,
-      isOnline,
-      source: 'suggestion',
-    });
+    const isOnline = (r.player.lastSeenAt?.getTime() ?? 0) > onlineThreshold.getTime();
+    const nickname = nicknameByUser.get(r.playerUserId) ?? (r.gameId === gameId ? r.nickname : null);
+
+    const existing = byUserId.get(r.playerUserId);
+    const source: SquadCandidate['source'] = r.gameId === gameId ? 'recent' : 'suggestion';
+
+    if (!existing) {
+      byUserId.set(r.playerUserId, {
+        userId: r.playerUserId,
+        name: r.player.name,
+        photoUrl: r.photoUrl ?? r.player.photoUrl,
+        nickname,
+        isOnline,
+        source,
+      });
+      continue;
+    }
+
+    if (r.gameId === gameId) {
+      existing.source = 'recent';
+      existing.nickname = nickname ?? existing.nickname;
+    }
+    if (isOnline) existing.isOnline = true;
   }
 
   return [...byUserId.values()].sort((a, b) => {

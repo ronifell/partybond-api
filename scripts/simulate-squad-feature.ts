@@ -24,7 +24,7 @@ async function main() {
 
   const leader = await prisma.user.create({
     data: {
-      email: `squad_leader_${ts}@test.partybond`,
+      email: `squad.leader.${ts}@example.com`,
       passwordHash: 'x',
       name: 'Tiago',
       age: 25,
@@ -32,7 +32,7 @@ async function main() {
   });
   const invitee = await prisma.user.create({
     data: {
-      email: `squad_invitee_${ts}@test.partybond`,
+      email: `squad.invitee.${ts}@example.com`,
       passwordHash: 'x',
       name: 'Joao',
       age: 26,
