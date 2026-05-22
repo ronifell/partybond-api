@@ -78,6 +78,13 @@ async function main() {
   });
   ok(`Session created: ${session.id.slice(0, 10)}…`);
 
+  await prisma.queueEntry.create({ data: { sessionId: session.id, userId: leader.id } });
+  await prisma.user.update({
+    where: { id: leader.id },
+    data: { state: 'in_queue', currentSessionId: session.id, currentMatchId: null },
+  });
+  ok('Leader in session queue');
+
   const sent = await sessionSquadService.sendSessionSquadInvites(session.id, leader.id, [
     invitee.id,
   ]);
@@ -90,14 +97,27 @@ async function main() {
   if (!pending[0]!.session.gameName) fail('Game name missing on invite');
   ok(`Pending invite UI text: convite de squad de ${pending[0]!.inviter.name} para ${pending[0]!.session.gameName}`);
 
-  await sessionSquadService.respondSessionSquadInvite(pending[0]!.id, invitee.id, true);
-  ok('Invite accepted');
+  const acceptResult = await sessionSquadService.respondSessionSquadInvite(
+    pending[0]!.id,
+    invitee.id,
+    true,
+  );
+  if (!acceptResult.joinedQueue) fail('Expected joinedQueue after accept');
+  if ((acceptResult.waitingCount ?? 0) < 2) {
+    fail(`Expected waitingCount >= 2 after accept, got ${acceptResult.waitingCount}`);
+  }
+  ok('Invite accepted and queue updated');
 
   const inviteeUser = await prisma.user.findUnique({ where: { id: invitee.id } });
-  if (inviteeUser?.state !== 'in_queue' || inviteeUser.currentSessionId !== session.id) {
-    fail(`After accept: expected in_queue on session, got ${inviteeUser?.state}`);
+  const leaderUser = await prisma.user.findUnique({ where: { id: leader.id } });
+  const match = await prisma.match.findFirst({ where: { sessionId: session.id } });
+  if (!match) fail('Expected match after accept');
+  if (inviteeUser?.state !== 'in_match' || leaderUser?.state !== 'in_match') {
+    fail(
+      `After accept: expected both in_match, got invitee=${inviteeUser?.state} leader=${leaderUser?.state}`,
+    );
   }
-  ok('Invitee joined session queue');
+  ok(`Match auto-created: ${match.id.slice(0, 10)}…`);
 
   const pendingAfter = await sessionSquadService.listPendingSessionSquadInvites(invitee.id);
   if (pendingAfter.length > 0) fail('Accepted invite still pending');
@@ -125,6 +145,7 @@ async function main() {
   ok('Decline path works');
 
   // Cleanup
+  await prisma.match.deleteMany({ where: { sessionId: session.id } });
   await prisma.sessionSquadInvite.deleteMany({ where: { sessionId: session.id } });
   await prisma.queueEntry.deleteMany({ where: { sessionId: session.id } });
   await prisma.session.delete({ where: { id: session.id } });

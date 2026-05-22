@@ -2,8 +2,10 @@ import { prisma } from '../config/database';
 import { HttpError } from '../utils/httpError';
 import { getBlockedUserIds } from './blockService';
 import { sendPush } from './pushService';
-import { emitToUser } from '../socket';
+import { emitToUser, emitToSession } from '../socket';
 import { TX_OPTIONS } from '../config/prismaTx';
+import { tryDrainSession } from './matchmakingService';
+import { track } from './analyticsService';
 
 const ONLINE_MS = 5 * 60_000;
 const INVITE_TTL_MS = 24 * 60 * 60_000;
@@ -231,6 +233,7 @@ export async function respondSessionSquadInvite(
   }
 
   const sessionId = invite.sessionId;
+  let joinedQueue = false;
 
   await prisma.$transaction(async (tx) => {
     await tx.sessionSquadInvite.update({
@@ -243,11 +246,14 @@ export async function respondSessionSquadInvite(
 
     const session = await tx.session.findUnique({ where: { id: sessionId } });
     if (!session) throw HttpError.notFound('Session not found');
+    if (session.status === 'finished') {
+      throw HttpError.badRequest('Session finished', 'session_finished');
+    }
 
     const profile = await tx.userGameProfile.findUnique({
       where: { userId_gameId: { userId, gameId: session.gameId } },
     });
-    if (!profile) {
+    if (!profile?.nickname?.trim() || !profile?.playerId?.trim()) {
       throw HttpError.badRequest('Set your game profile first', 'no_game_profile');
     }
 
@@ -261,8 +267,19 @@ export async function respondSessionSquadInvite(
         where: { id: userId },
         data: { state: 'in_queue', currentSessionId: sessionId, currentMatchId: null },
       });
+      joinedQueue = true;
+    } else if (user.state === 'in_queue' && user.currentSessionId === sessionId) {
+      joinedQueue = true;
     }
   }, TX_OPTIONS);
 
-  return { ok: true, sessionId };
+  let waitingCount: number | undefined;
+  if (joinedQueue) {
+    void track('queue_join', userId, { sessionId, source: 'squad_invite_accept' });
+    waitingCount = await prisma.queueEntry.count({ where: { sessionId } });
+    emitToSession(sessionId, 'queue:update', { sessionId, waitingCount });
+    await tryDrainSession(sessionId);
+  }
+
+  return { ok: true, sessionId, joinedQueue, waitingCount };
 }
