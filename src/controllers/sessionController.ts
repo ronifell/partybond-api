@@ -86,6 +86,13 @@ sessionRouter.post(
     if (!game) throw HttpError.notFound('Game not found');
     if (game.status !== 'active') throw HttpError.badRequest('Game not active', 'game_inactive');
 
+    const profile = await prisma.userGameProfile.findUnique({
+      where: { userId_gameId: { userId: req.userId!, gameId: body.gameId } },
+    });
+    if (!profile?.nickname?.trim() || !profile?.playerId?.trim()) {
+      throw HttpError.badRequest('Set your game profile first', 'no_game_profile');
+    }
+
     const scheduledAt = body.scheduledAt ?? new Date();
     const status = scheduledAt.getTime() <= Date.now() ? 'active' : 'open';
     const playersNeeded = body.playersNeeded ?? Math.min(game.maxPlayers, 4);
@@ -206,7 +213,7 @@ sessionRouter.post(
       const profile = await tx.userGameProfile.findUnique({
         where: { userId_gameId: { userId, gameId: session.gameId } },
       });
-      if (!profile) {
+      if (!profile?.nickname?.trim() || !profile?.playerId?.trim()) {
         throw HttpError.badRequest('Set your game profile first', 'no_game_profile');
       }
 
