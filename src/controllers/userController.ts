@@ -15,7 +15,6 @@ import { listRecentPlayers } from '../services/recentPlayerService';
 import { listSquadCandidates } from '../services/sessionSquadService';
 import { getBlockedUserIds } from '../services/blockService';
 import { env } from '../config/env';
-import { isRealAppUser } from '../utils/realAppUser';
 
 export const userRouter = Router();
 
@@ -245,9 +244,7 @@ userRouter.get(
       },
     });
 
-    const users = profiles
-      .filter((p) => isRealAppUser(p.user.email))
-      .map((p) => ({
+    const users = profiles.map((p) => ({
         userId: p.user.id,
         name: p.user.name,
         nickname: p.nickname,
