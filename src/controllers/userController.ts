@@ -15,6 +15,7 @@ import { listRecentPlayers } from '../services/recentPlayerService';
 import { listSquadCandidates } from '../services/sessionSquadService';
 import { getBlockedUserIds } from '../services/blockService';
 import { env } from '../config/env';
+import { isRealAppUser } from '../utils/realAppUser';
 
 export const userRouter = Router();
 

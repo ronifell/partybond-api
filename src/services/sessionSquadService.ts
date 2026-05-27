@@ -6,6 +6,7 @@ import { emitToUser, emitToSession } from '../socket';
 import { TX_OPTIONS } from '../config/prismaTx';
 import { tryDrainSession } from './matchmakingService';
 import { track } from './analyticsService';
+import { isRealAppUser } from '../utils/realAppUser';
 
 const ONLINE_MS = 5 * 60_000;
 const INVITE_TTL_MS = 24 * 60 * 60_000;
@@ -18,18 +19,6 @@ export type SquadCandidate = {
   isOnline: boolean;
   source: 'recent' | 'suggestion';
 };
-
-/** Skip integration / simulation accounts in squad pickers. */
-function isRealAppUser(email: string): boolean {
-  const e = email.toLowerCase();
-  if (e.endsWith('@partybond.test')) return false;
-  if (e.endsWith('@test.partybond')) return false;
-  if (/^test[a-z]_\d+@/.test(e)) return false;
-  if (e.includes('squad_leader_') || e.includes('squad_invitee_') || e.includes('squad_decline_')) {
-    return false;
-  }
-  return true;
-}
 
 /**
  * Players you can invite to a squad: real users from your recent-player history
