@@ -103,6 +103,7 @@ const scheduleSchema = z.object({
   timeLocal: z.string().regex(/^\d{2}:\d{2}$/),
   frequency: z.enum(['weekly', 'biweekly']).optional(),
   timezone: z.string().optional(),
+  startsAt: z.string().datetime().optional(),
 });
 
 groupsRouter.post(

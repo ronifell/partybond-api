@@ -16,7 +16,13 @@ function nextOccurrence(dayOfWeek: number, timeLocal: string, from: Date): Date 
 export async function createGroupSchedule(
   groupId: string,
   userId: string,
-  input: { dayOfWeek: number; timeLocal: string; frequency?: 'weekly' | 'biweekly'; timezone?: string },
+  input: {
+    dayOfWeek: number;
+    timeLocal: string;
+    frequency?: 'weekly' | 'biweekly';
+    timezone?: string;
+    startsAt?: string;
+  },
 ) {
   const group = await prisma.group.findUnique({
     where: { id: groupId },
@@ -48,7 +54,12 @@ export async function createGroupSchedule(
     },
   });
 
-  const startsAt = nextOccurrence(schedule.dayOfWeek, schedule.timeLocal, new Date());
+  const startsAt = input.startsAt
+    ? new Date(input.startsAt)
+    : nextOccurrence(schedule.dayOfWeek, schedule.timeLocal, new Date());
+  if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date()) {
+    throw HttpError.badRequest('Invalid start date/time', 'invalid_starts_at');
+  }
   const session = await prisma.groupSession.create({
     data: { groupId, scheduleId: schedule.id, startsAt },
   });
