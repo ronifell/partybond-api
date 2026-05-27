@@ -217,6 +217,48 @@ userRouter.get(
 );
 
 userRouter.get(
+  '/game-profile-users',
+  requireAuth,
+  validate(z.object({ gameId: z.string().min(1) }), 'query'),
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.query as { gameId: string };
+    const blocked = await getBlockedUserIds(req.userId!);
+    const exclude = new Set([req.userId!, ...blocked]);
+    const onlineThreshold = new Date(Date.now() - 5 * 60_000);
+
+    const profiles = await prisma.userGameProfile.findMany({
+      where: {
+        gameId,
+        userId: { notIn: [...exclude] },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            photoUrl: true,
+            lastSeenAt: true,
+          },
+        },
+      },
+    });
+
+    const users = profiles
+      .filter((p) => isRealAppUser(p.user.email))
+      .map((p) => ({
+        userId: p.user.id,
+        name: p.user.name,
+        nickname: p.nickname,
+        photoUrl: p.user.photoUrl,
+        isOnline: (p.user.lastSeenAt?.getTime() ?? 0) > onlineThreshold.getTime(),
+      }));
+
+    res.json({ users });
+  }),
+);
+
+userRouter.get(
   '/:id/public',
   requireAuth,
   asyncHandler(async (req, res) => {
