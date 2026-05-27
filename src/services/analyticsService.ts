@@ -22,7 +22,18 @@ export type AnalyticsEventName =
   | 'group_invite_accepted'
   | 'group_invite_declined'
   | 'user_blocked'
-  | 'user_reported';
+  | 'user_reported'
+  | 'admin_login'
+  | 'admin_user_banned'
+  | 'admin_user_unbanned'
+  | 'admin_user_deleted'
+  | 'admin_flag_changed'
+  | 'admin_report_updated'
+  | 'admin_game_created'
+  | 'admin_game_updated'
+  | 'admin_game_deleted'
+  | 'admin_session_deleted'
+  | 'admin_match_finished';
 
 export async function track(
   name: AnalyticsEventName,

@@ -105,6 +105,12 @@ enum ReportCategory {
   other
 }
 
+enum ReportStatus {
+  open
+  reviewed
+  dismissed
+}
+
 // -----------------------------------------------------------------------------
 // Models
 // -----------------------------------------------------------------------------
@@ -141,6 +147,9 @@ model User {
   fcmToken         String?   @map("fcm_token")
   locale           String    @default("en")
   lastSeenAt       DateTime? @map("last_seen_at")
+  isAdmin          Boolean   @default(false) @map("is_admin")
+  bannedAt         DateTime? @map("banned_at")
+  banReason        String?   @map("ban_reason")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
@@ -521,17 +530,22 @@ model UserBlock {
 }
 
 model UserReport {
-  id         String         @id @default(cuid())
-  reporterId String         @map("reporter_id")
-  reportedId String         @map("reported_id")
-  category   ReportCategory
-  details    String?        @db.Text
-  createdAt  DateTime       @default(now()) @map("created_at")
+  id           String         @id @default(cuid())
+  reporterId   String         @map("reporter_id")
+  reportedId   String         @map("reported_id")
+  category     ReportCategory
+  details      String?        @db.Text
+  status       ReportStatus   @default(open)
+  adminNote    String?        @map("admin_note") @db.Text
+  resolvedAt   DateTime?      @map("resolved_at")
+  resolvedById String?        @map("resolved_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
 
   reporter User @relation("ReportsFiled", fields: [reporterId], references: [id])
   reported User @relation("ReportsReceived", fields: [reportedId], references: [id])
 
   @@index([reportedId, createdAt])
+  @@index([status, createdAt])
   @@map("user_reports")
 }
 

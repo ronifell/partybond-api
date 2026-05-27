@@ -66,6 +66,16 @@ authRouter.post(
 );
 
 authRouter.post(
+  '/admin/login',
+  validate(loginSchema),
+  asyncHandler(async (req, res) => {
+    const result = await authService.adminLogin(req.body);
+    void track('admin_login', result.user.id);
+    res.json(result);
+  }),
+);
+
+authRouter.post(
   '/google',
   validate(googleAuthSchema),
   asyncHandler(async (req, res) => {

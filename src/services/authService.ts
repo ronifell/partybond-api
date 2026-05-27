@@ -18,6 +18,7 @@ export interface PublicUser {
   currentSessionId: string | null;
   currentMatchId: string | null;
   locale: string;
+  isAdmin: boolean;
   gameProfiles: Array<{ gameId: string; nickname: string; playerId: string }>;
 }
 
@@ -36,6 +37,7 @@ function toPublicUser(user: Awaited<ReturnType<typeof loadUserById>>): PublicUse
     currentSessionId: user.currentSessionId,
     currentMatchId: user.currentMatchId,
     locale: user.locale,
+    isAdmin: user.isAdmin ?? false,
     gameProfiles: user.gameProfiles.map((p) => ({
       gameId: p.gameId,
       nickname: p.nickname,
@@ -139,8 +141,36 @@ export async function login(input: { email: string; password: string }) {
   const ok = await bcrypt.compare(input.password, user.passwordHash);
   if (!ok) throw HttpError.unauthorized('Invalid credentials', 'invalid_credentials');
 
+  if (user.bannedAt) {
+    throw HttpError.forbidden(
+      user.banReason ? `Account suspended: ${user.banReason}` : 'Account suspended',
+      'account_banned',
+    );
+  }
+
   const token = signJwt({ sub: user.id, email: user.email });
   return { token, user: toPublicUser(user) };
+}
+
+/**
+ * Admin-only login. Same credentials check + must have isAdmin=true.
+ * Used by the web admin panel; mobile app users use the normal login endpoint.
+ */
+export async function adminLogin(input: { email: string; password: string }) {
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+    include: { gameProfiles: true },
+  });
+  if (!user) throw HttpError.unauthorized('Invalid credentials', 'invalid_credentials');
+
+  const ok = await bcrypt.compare(input.password, user.passwordHash);
+  if (!ok) throw HttpError.unauthorized('Invalid credentials', 'invalid_credentials');
+
+  if (user.bannedAt) throw HttpError.forbidden('Account suspended', 'account_banned');
+  if (!user.isAdmin) throw HttpError.forbidden('Admin privileges required', 'not_admin');
+
+  const token = signJwt({ sub: user.id, email: user.email });
+  return { token, user: toPublicUser(user), isAdmin: true };
 }
 
 export async function getMe(userId: string) {

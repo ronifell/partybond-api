@@ -18,6 +18,7 @@ import { matchmakingRouter } from './controllers/matchmakingController';
 import { groupsRouter } from './controllers/groupsController';
 import { chatRouter } from './controllers/chatController';
 import { moderationRouter } from './controllers/moderationController';
+import { adminRouter } from './controllers/adminController';
 
 export function buildApp(): express.Express {
   const app = express();
@@ -82,6 +83,7 @@ export function buildApp(): express.Express {
   app.use('/api/v1/groups', groupsRouter);
   app.use('/api/v1/chats', chatRouter);
   app.use('/api/v1/moderation', moderationRouter);
+  app.use('/api/v1/admin', adminRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
