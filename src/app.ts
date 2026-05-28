@@ -47,6 +47,9 @@ export function buildApp(): express.Express {
   // Static for uploaded images
   app.use('/uploads', express.static(path.resolve(env.uploadDir)));
 
+  // Serve game images uploaded via the Admin panel
+  app.use('/game-images', express.static(path.resolve(__dirname, '../../Admin/public/games')));
+
   app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
   /**
