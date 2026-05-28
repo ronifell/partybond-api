@@ -4,6 +4,7 @@
  * All routes are mounted under `/api/v1/admin` and guarded by `requireAuth` + `requireAdmin`.
  * Mobile app endpoints are untouched.
  */
+import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
@@ -604,5 +605,62 @@ adminRouter.post(
 
     void track('admin_match_finished', req.userId!, { matchId: match.id });
     res.json({ match: updated });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Account — self-service profile & password update for the logged-in admin
+// ---------------------------------------------------------------------------
+
+const updateAccountSchema = z
+  .object({
+    name: z.string().min(2).max(60).optional(),
+    email: z.string().email().toLowerCase().optional(),
+    currentPassword: z.string().min(1).optional(),
+    newPassword: z.string().min(6).max(128).optional(),
+  })
+  .refine((d) => !d.newPassword || !!d.currentPassword, {
+    message: 'currentPassword is required when setting a new password',
+    path: ['currentPassword'],
+  });
+
+adminRouter.patch(
+  '/account',
+  validate(updateAccountSchema),
+  asyncHandler(async (req, res) => {
+    const { name, email, currentPassword, newPassword } =
+      req.body as z.infer<typeof updateAccountSchema>;
+
+    const admin = await prisma.user.findUniqueOrThrow({ where: { id: req.userId! } });
+
+    if (email && email !== admin.email) {
+      const taken = await prisma.user.findUnique({ where: { email } });
+      if (taken) {
+        res.status(409).json({ error: { message: 'Email already in use', code: 'email_taken' } });
+        return;
+      }
+    }
+
+    if (newPassword) {
+      const valid = await bcrypt.compare(currentPassword!, admin.passwordHash);
+      if (!valid) {
+        res
+          .status(400)
+          .json({ error: { message: 'Current password is incorrect', code: 'wrong_password' } });
+        return;
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: req.userId! },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(newPassword ? { passwordHash: await bcrypt.hash(newPassword, 10) } : {}),
+      },
+      select: { id: true, name: true, email: true, photoUrl: true, isAdmin: true },
+    });
+
+    res.json({ user: updated });
   }),
 );
