@@ -2,6 +2,7 @@ import http from 'node:http';
 import { buildApp } from './app';
 import { env } from './config/env';
 import { logger } from './utils/logger';
+import { getGameImagesDir } from './services/gameImageService';
 import { initSocket } from './socket';
 import { startCleanupJobs } from './services/cleanupService';
 import { getFirebaseAdmin } from './config/firebase';
@@ -16,6 +17,7 @@ async function main() {
 
   server.listen(env.port, () => {
     logger.info(`Partybond API ready at ${env.appUrl} (env=${env.nodeEnv})`);
+    logger.info({ gameImagesDir: getGameImagesDir() }, 'Game images directory');
     if (env.mail.isConfigured) {
       logger.info(
         {

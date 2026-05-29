@@ -16,11 +16,36 @@ export const GAME_IMAGE_MIME_BY_EXT: Record<(typeof GAME_IMAGE_EXTENSIONS)[numbe
 /** Same rule as admin game IDs — used for image URLs and upload paths. */
 export const GAME_ID_REGEX = /^[a-z][a-z0-9_]{1,40}$/;
 
-export function getGameImagesDir(): string {
-  return env.gameImagesDir;
+/** Sibling admin panel folder names (production vs local repo layout). */
+const ADMIN_SIBLING_FOLDERS = ['partybond-admin', 'Admin'] as const;
+
+function resolveGameImagesDir(): string {
+  const explicit = process.env.GAME_IMAGES_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+
+  const cwd = process.cwd();
+
+  // Prefer the admin panel's public/games when it sits next to the API process.
+  for (const folder of ADMIN_SIBLING_FOLDERS) {
+    const candidate = path.resolve(cwd, '..', folder, 'public', 'games');
+    try {
+      fs.accessSync(candidate, fs.constants.R_OK | fs.constants.W_OK);
+      return candidate;
+    } catch {
+      // try next layout
+    }
+  }
+
+  // Self-contained fallback — no dependency on admin folder name.
+  return path.resolve(cwd, 'game-images');
 }
 
-fs.mkdirSync(getGameImagesDir(), { recursive: true });
+const gameImagesDir = resolveGameImagesDir();
+fs.mkdirSync(gameImagesDir, { recursive: true });
+
+export function getGameImagesDir(): string {
+  return gameImagesDir;
+}
 
 export function extFromMime(mime: string): string {
   if (mime === 'image/png') return 'png';

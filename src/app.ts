@@ -53,9 +53,6 @@ export function buildApp(): express.Express {
   // Static for uploaded images
   app.use('/uploads', express.static(path.resolve(env.uploadDir)));
 
-  // Legacy direct file paths (e.g. /game-images/valorant.png)
-  app.use('/game-images', express.static(env.gameImagesDir));
-
   // Game thumbnails by id — resolves png/jpg/webp/gif (e.g. /game-images/valorant)
   app.get(
     '/game-images/:gameId',
