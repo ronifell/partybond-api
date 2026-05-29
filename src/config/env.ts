@@ -42,6 +42,10 @@ export const env = {
 
   uploadDir: process.env.UPLOAD_DIR ?? 'uploads',
   maxUploadSizeMb: Number(process.env.MAX_UPLOAD_SIZE_MB ?? 5),
+  /** Directory where admin-uploaded game thumbnails are stored (served at /game-images/:id). */
+  gameImagesDir:
+    process.env.GAME_IMAGES_DIR ??
+    path.resolve(__dirname, '../../Admin/public/games'),
 
   mail: {
     host: cleanEnv(process.env.MAIL_HOST) || 'smtp.gmail.com',

@@ -8,6 +8,12 @@ import path from 'node:path';
 import { env, isProd } from './config/env';
 import { getFirebaseAdmin } from './config/firebase';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
+import { asyncHandler } from './utils/asyncHandler';
+import {
+  findGameImageFile,
+  GAME_ID_REGEX,
+  GAME_IMAGE_MIME_BY_EXT,
+} from './services/gameImageService';
 
 import { authRouter } from './controllers/authController';
 import { userRouter } from './controllers/userController';
@@ -47,8 +53,33 @@ export function buildApp(): express.Express {
   // Static for uploaded images
   app.use('/uploads', express.static(path.resolve(env.uploadDir)));
 
-  // Serve game images uploaded via the Admin panel
-  app.use('/game-images', express.static(path.resolve(__dirname, '../../Admin/public/games')));
+  // Legacy direct file paths (e.g. /game-images/valorant.png)
+  app.use('/game-images', express.static(env.gameImagesDir));
+
+  // Game thumbnails by id — resolves png/jpg/webp/gif (e.g. /game-images/valorant)
+  app.get(
+    '/game-images/:gameId',
+    asyncHandler(async (req, res) => {
+      const { gameId } = req.params;
+      if (!GAME_ID_REGEX.test(gameId)) {
+        res.status(400).json({ error: { code: 'invalid_game_id', message: 'Invalid game id' } });
+        return;
+      }
+
+      const match = await findGameImageFile(gameId);
+      if (!match) {
+        res.status(404).json({ error: { code: 'not_found', message: 'Game image not found' } });
+        return;
+      }
+
+      const contentType =
+        GAME_IMAGE_MIME_BY_EXT[match.ext as keyof typeof GAME_IMAGE_MIME_BY_EXT] ??
+        'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.sendFile(match.filePath);
+    }),
+  );
 
   app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 

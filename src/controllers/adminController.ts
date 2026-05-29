@@ -6,15 +6,23 @@
  */
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../config/database';
+import { env } from '../config/env';
 import { requireAuth } from '../middlewares/auth';
 import { requireAdmin } from '../middlewares/requireAdmin';
 import { validate } from '../middlewares/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/httpError';
 import { track } from '../services/analyticsService';
+import {
+  extFromMime,
+  gameImagePublicUrl,
+  getGameImagesDir,
+  removeExistingGameImages,
+} from '../services/gameImageService';
 
 export const adminRouter = Router();
 
@@ -467,6 +475,56 @@ adminRouter.delete(
     await prisma.game.delete({ where: { id: req.params.id } });
     void track('admin_game_deleted', req.userId!, { gameId: req.params.id });
     res.json({ ok: true });
+  }),
+);
+
+const gameImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, getGameImagesDir()),
+    filename: (req, file, cb) => {
+      const ext = extFromMime(file.mimetype);
+      cb(null, `${req.params.id}.${ext}`);
+    },
+  }),
+  limits: { fileSize: env.maxUploadSizeMb * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype)) {
+      cb(new HttpError(415, 'Only PNG, JPEG, WebP, and GIF images are allowed', 'invalid_file'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+adminRouter.post(
+  '/games/:id/image',
+  asyncHandler(async (req, res, next) => {
+    const exists = await prisma.game.findUnique({ where: { id: req.params.id } });
+    if (!exists) throw HttpError.notFound('Game not found');
+    await removeExistingGameImages(req.params.id);
+    next();
+  }),
+  (req, res, next) => {
+    gameImageUpload.single('image')(req, res, (err: unknown) => {
+      if (!err) {
+        next();
+        return;
+      }
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        next(
+          HttpError.badRequest(
+            `File too large. Max ${env.maxUploadSizeMb} MB.`,
+            'file_too_large',
+          ),
+        );
+        return;
+      }
+      next(err);
+    });
+  },
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw HttpError.badRequest('image field is required', 'missing_image');
+    res.json({ ok: true, url: gameImagePublicUrl(req.params.id) });
   }),
 );
 
