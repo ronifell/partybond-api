@@ -48,6 +48,39 @@ Requires **2-Step Verification** on the Google account. Emails can be sent to **
 5. Run `npx prisma migrate deploy` for the `google_id` column.
 6. **Web client → Authorized redirect URIs:** only `https://` or `http://` URLs are allowed. Add `https://auth.expo.io/@YOUR_EXPO_USERNAME/partybond` for Expo Go. **Do not** add `partybond://` here — Google rejects it (“must contain a domain”). EAS/APK builds use Expo’s default redirect `com.partybond.app:/oauthredirect`, which is tied to your **Android** OAuth client (package + SHA-1), not the Web redirect list.
 
+### Google Play Billing (Premium subscriptions)
+
+Premium unlocks the **automatic group formation** feature. The backend verifies every Google Play purchase server-side and stores entitlement in the `Subscription` table (cached on `User.premiumUntil` for fast checks).
+
+1. Google Play Console → your app → **Monetisation setup → Subscriptions**. Create one subscription product (e.g. `partybond_premium_monthly`) with at least one base plan. Copy the product ID into `GOOGLE_PLAY_PREMIUM_PRODUCT_IDS` (comma separated if you have multiple, e.g. `partybond_premium_monthly,partybond_premium_yearly`) and into the frontend `EXPO_PUBLIC_PREMIUM_PRODUCT_IDS`.
+2. Make sure `GOOGLE_PLAY_PACKAGE_NAME` matches the Android package (`com.partybond.app`).
+3. **Service account** for the Android Publisher API:
+   - Google Cloud Console → IAM → **Create service account** in the same project linked to Play Console.
+   - Generate a **JSON key**. Copy its full JSON content into `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` as a single line (escape newlines or use the raw JSON depending on your env loader).
+   - Play Console → **Users & permissions → Invite new users**, add the service account email. Grant **View financial data** and **Manage orders & subscriptions** for the app.
+4. Restart the API. Verification happens at `POST /billing/google-play/verify { productId, purchaseToken }`, called from the client after a successful purchase. The endpoint upserts the subscription and recomputes `premiumUntil` from the latest `expiryTimeMillis`.
+5. Refresh from the client side with `GET /billing/refresh` (re-checks all stored tokens against Google). Schedule a daily cron in production if you need defensive expiry handling beyond the 30s `cronTickAutoGroups` tick.
+6. To grant premium manually (referral reward, support, comp): `grantManualPremium(userId, days)` from `billingService` is exposed indirectly through `redeemReferralOnSignup`.
+
+### Referrals & invite links
+
+Users share `${INVITE_BASE_URL}/i/<CODE>` (e.g. `https://api.partybond.app/i/AB23KX9Y`). The backend serves a smart redirect:
+
+- **Android UA** → Play Store with `referrer=invite_<CODE>` (so the app can pick it up via install-referrer if you wire it later).
+- **iOS UA** → `APP_STORE_URL` (set when the iOS app ships).
+- **Desktop / other** → tiny HTML landing page with both store buttons.
+
+When a new user signs up with `inviteCode` in the body (`POST /auth/register { …, inviteCode }`), `redeemReferralOnSignup` grants the **inviter** `REFERRAL_REWARD_DAYS` free Premium days (default 7) and writes a `Referral` row. The frontend pre-fills this field from the clipboard if it detects a valid code, but the user can paste/type it manually too.
+
+| Env var | Purpose | Example |
+|---|---|---|
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Single-line JSON for the Publisher API service account | `{"type":"service_account",…}` |
+| `GOOGLE_PLAY_PACKAGE_NAME` | Android package name | `com.partybond.app` |
+| `GOOGLE_PLAY_PREMIUM_PRODUCT_IDS` | Comma-separated subscription IDs to consider Premium | `partybond_premium_monthly` |
+| `INVITE_BASE_URL` | Public base URL used in shareable invite links | `https://api.partybond.app` |
+| `APP_STORE_URL` | iOS App Store URL (optional, falls back to landing) | `https://apps.apple.com/app/id…` |
+| `REFERRAL_REWARD_DAYS` | Free Premium days credited to the inviter on signup | `7` |
+
 ## API surface (REST)
 
 All under `/api/v1`. Bearer JWT required unless noted.
@@ -73,6 +106,19 @@ All under `/api/v1`. Bearer JWT required unless noted.
 | GET | `/matches/:id` | Match detail (participants only). |
 | POST | `/matches/:id/interactions` | Quick action (`add_me`, `already_added`, `enter_lobby`, `waiting`, `did_not_work`). |
 | POST | `/matches/:id/finish` | End the match manually. |
+| GET | `/billing/products` | Configured premium product IDs. Public. |
+| GET | `/billing/me` | Current user's premium status + stored subscriptions. |
+| POST | `/billing/refresh` | Re-verify every stored subscription against Google Play. |
+| POST | `/billing/google-play/verify` | `{ productId, purchaseToken }` — verify a fresh purchase, persist, grant Premium. |
+| GET | `/referrals/me` | User's invite code + shareable link + stats. |
+| GET | `/referrals/history` | List of redemptions this user made (as inviter). |
+| POST | `/referrals/redeem` | `{ code }` — redeem post-signup (mostly used by the register flow). |
+| GET | `/referrals/lookup/:code` | Public — returns inviter display name for landing pages. |
+| GET | `/i/:code` | Public — UA-aware redirect (Android → Play, iOS → App Store, desktop → landing). |
+| GET | `/auto-groups` | List the user's auto-group requests. |
+| POST | `/auto-groups` | **Premium only.** Create an auto-group request (game, players needed, mode/style/skill). Spawns the group, picks initial candidates, sends squad-fill invites. |
+| GET | `/auto-groups/:id` | Status + confirmed members + pending invites. |
+| POST | `/auto-groups/:id/cancel` | Cancel the search; pending invites are revoked. |
 
 ## Socket.IO events
 
@@ -109,12 +155,13 @@ A `tryDrainSession(sessionId)` loop re-runs the pairing until no more matches ar
 - **every 5 min** — flip scheduled sessions `open → active` when `scheduledAt` passes (auto activation, no button — Section 8 of the blueprint).
 - **every hour** — delete finished sessions older than 24h.
 - **every hour** — reset users stuck in inconsistent state (`in_match` with no active match, `in_queue` with no session).
+- **every 30s** — `cronTickAutoGroups` runs another matching wave for any pending auto-group request, expires stale ones, and marks fulfilled groups when the target count is reached.
 
 ## Analytics
 
 `src/services/analyticsService.ts` records events to the `analytics_events` table:
 
-`login`, `register`, `onboarding_complete`, `game_selected`, `session_created`, `session_enter`, `queue_join`, `queue_leave`, `match_start`, `interaction_sent`, `match_end`, `match_timeout`.
+`login`, `register`, `onboarding_complete`, `game_selected`, `session_created`, `session_enter`, `queue_join`, `queue_leave`, `match_start`, `interaction_sent`, `match_end`, `match_timeout`, `subscription_verified`, `premium_granted`, `referral_redeemed`, `auto_group_started`, `auto_group_canceled`, `auto_group_fulfilled`.
 
 ## Security
 

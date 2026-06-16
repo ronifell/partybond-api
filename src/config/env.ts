@@ -70,6 +70,30 @@ export const env = {
       .map((id) => cleanEnv(id))
       .filter(Boolean),
   },
+
+  /** Google Play Billing — server-side subscription verification. */
+  googlePlay: {
+    serviceAccountJson: cleanEnv(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON),
+    packageName: cleanEnv(process.env.GOOGLE_PLAY_PACKAGE_NAME) || 'com.partybond.app',
+    /** Subscription product IDs that grant premium. CSV. */
+    premiumProductIds: (cleanEnv(process.env.PREMIUM_PRODUCT_IDS) || 'partybond.premium.monthly')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    get isConfigured(): boolean {
+      return !!this.serviceAccountJson;
+    },
+  },
+
+  /** Referral / invite-a-friend program. */
+  referral: {
+    /** Base URL of the public invite landing page (e.g. https://api.partybond.com/i). */
+    baseUrl: (cleanEnv(process.env.INVITE_BASE_URL) || 'http://localhost:4000/i').replace(/\/+$/, ''),
+    /** Where iOS users get redirected from the landing page. */
+    appStoreUrl: cleanEnv(process.env.APP_STORE_URL) || 'https://apps.apple.com/app/id0000000000',
+    /** Premium days credited to the inviter when an invitee completes signup. */
+    rewardDays: Math.max(0, Number(cleanEnv(process.env.REFERRAL_REWARD_DAYS) || 7)),
+  },
 };
 
 export const isProd = env.nodeEnv === 'production';

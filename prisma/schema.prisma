@@ -111,17 +111,49 @@ enum ReportStatus {
   dismissed
 }
 
+enum SubscriptionPlatform {
+  google_play
+  app_store
+  manual
+}
+
+enum SubscriptionStatus {
+  active
+  trial
+  grace
+  on_hold
+  paused
+  canceled
+  expired
+  refunded
+}
+
+enum ReferralStatus {
+  pending
+  registered
+  rewarded
+  expired
+}
+
+enum AutoGroupRequestStatus {
+  searching
+  ready
+  fulfilled
+  expired
+  canceled
+}
+
 // -----------------------------------------------------------------------------
 // Models
 // -----------------------------------------------------------------------------
 
 model Game {
-  id           String     @id
-  name         String
-  status       GameStatus @default(coming_soon)
-  maxPlayers   Int        @default(4) @map("max_players")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  id         String     @id
+  name       String
+  status     GameStatus @default(coming_soon)
+  maxPlayers Int        @default(4) @map("max_players")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
 
   sessions     Session[]
   gameProfiles UserGameProfile[]
@@ -150,35 +182,45 @@ model User {
   isAdmin          Boolean   @default(false) @map("is_admin")
   bannedAt         DateTime? @map("banned_at")
   banReason        String?   @map("ban_reason")
+  /// Cached "premium until" date — fast O(1) gate. Mirrors the latest active subscription's
+  /// `currentPeriodEnd` PLUS any referral bonus days. Authoritative source = Subscription rows.
+  premiumUntil     DateTime? @map("premium_until")
+  /// Referral code the user redeemed at signup (only set once, immutable).
+  referredByCode   String?   @map("referred_by_code")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  gameProfiles          UserGameProfile[]
-  createdSessions       Session[]                 @relation("CreatedSessions")
-  queueEntries          QueueEntry[]
-  globalQueueEntries    GlobalQueueEntry[]
-  matchesAsA            Match[]                   @relation("MatchUserA")
-  matchesAsB            Match[]                   @relation("MatchUserB")
-  interactions          Interaction[]
-  recentAsOwner         RecentPlayer[]            @relation("RecentAsOwner")
-  recentAsPlayer        RecentPlayer[]            @relation("RecentAsPlayer")
-  groupsCreated         Group[]
-  groupMemberships      GroupMember[]
-  groupInvitesSent      GroupInvite[]             @relation("GroupInvitesSent")
-  groupInvitesReceived  GroupInvite[]             @relation("GroupInvitesReceived")
-  conversationParts     ConversationParticipant[]
-  messagesSent          Message[]
-  pinnedMessages        PinnedMessage[]
-  groupSessionRsvps     GroupSessionRsvp[]
-  squadFillInvitesSent  SquadFillInvite[]         @relation("SquadFillSent")
-  squadFillInvitesRecv  SquadFillInvite[]         @relation("SquadFillRecv")
-  sessionSquadInvitesSent SessionSquadInvite[]    @relation("SessionSquadInvitesSent")
-  sessionSquadInvitesRecv SessionSquadInvite[]    @relation("SessionSquadInvitesRecv")
-  blocksInitiated       UserBlock[]               @relation("BlocksInitiated")
-  blocksReceived        UserBlock[]               @relation("BlocksReceived")
-  reportsFiled          UserReport[]              @relation("ReportsFiled")
-  reportsReceived       UserReport[]              @relation("ReportsReceived")
-  passwordResetTokens   PasswordResetToken[]
+  gameProfiles            UserGameProfile[]
+  createdSessions         Session[]                 @relation("CreatedSessions")
+  queueEntries            QueueEntry[]
+  globalQueueEntries      GlobalQueueEntry[]
+  matchesAsA              Match[]                   @relation("MatchUserA")
+  matchesAsB              Match[]                   @relation("MatchUserB")
+  interactions            Interaction[]
+  recentAsOwner           RecentPlayer[]            @relation("RecentAsOwner")
+  recentAsPlayer          RecentPlayer[]            @relation("RecentAsPlayer")
+  groupsCreated           Group[]
+  groupMemberships        GroupMember[]
+  groupInvitesSent        GroupInvite[]             @relation("GroupInvitesSent")
+  groupInvitesReceived    GroupInvite[]             @relation("GroupInvitesReceived")
+  conversationParts       ConversationParticipant[]
+  messagesSent            Message[]
+  pinnedMessages          PinnedMessage[]
+  groupSessionRsvps       GroupSessionRsvp[]
+  squadFillInvitesSent    SquadFillInvite[]         @relation("SquadFillSent")
+  squadFillInvitesRecv    SquadFillInvite[]         @relation("SquadFillRecv")
+  sessionSquadInvitesSent SessionSquadInvite[]      @relation("SessionSquadInvitesSent")
+  sessionSquadInvitesRecv SessionSquadInvite[]      @relation("SessionSquadInvitesRecv")
+  blocksInitiated         UserBlock[]               @relation("BlocksInitiated")
+  blocksReceived          UserBlock[]               @relation("BlocksReceived")
+  reportsFiled            UserReport[]              @relation("ReportsFiled")
+  reportsReceived         UserReport[]              @relation("ReportsReceived")
+  passwordResetTokens     PasswordResetToken[]
+  subscriptions           Subscription[]
+  referralCode            ReferralCode?
+  referralsSent           Referral[]                @relation("ReferralsSent")
+  referralAsInvitee       Referral?                 @relation("ReferralAsInvitee")
+  autoGroupRequests       AutoGroupRequest[]
 
   @@map("users")
 }
@@ -229,8 +271,8 @@ model Session {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
-  game      Game         @relation(fields: [gameId], references: [id])
-  createdBy User         @relation("CreatedSessions", fields: [createdById], references: [id])
+  game         Game                 @relation(fields: [gameId], references: [id])
+  createdBy    User                 @relation("CreatedSessions", fields: [createdById], references: [id])
   queue        QueueEntry[]
   matches      Match[]
   squadInvites SessionSquadInvite[]
@@ -325,19 +367,22 @@ model RecentPlayer {
 }
 
 model Group {
-  id          String   @id @default(cuid())
-  name        String
-  photoUrl    String?  @map("photo_url")
-  createdById String   @map("created_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id           String   @id @default(cuid())
+  name         String
+  photoUrl     String?  @map("photo_url")
+  createdById  String   @map("created_by_id")
+  /// True for groups auto-formed by the matchmaker (premium feature). Manual groups stay false.
+  isAutoFormed Boolean  @default(false) @map("is_auto_formed")
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  createdBy     User           @relation(fields: [createdById], references: [id])
-  members       GroupMember[]
-  invites       GroupInvite[]
-  schedules     GroupSchedule[]
-  sessions      GroupSession[]
-  conversation  Conversation?
+  createdBy        User              @relation(fields: [createdById], references: [id])
+  members          GroupMember[]
+  invites          GroupInvite[]
+  schedules        GroupSchedule[]
+  sessions         GroupSession[]
+  conversation     Conversation?
   squadFillInvites SquadFillInvite[]
+  autoGroupRequest AutoGroupRequest?
 
   @@map("groups")
 }
@@ -409,10 +454,10 @@ model Message {
   replyToId      String?  @map("reply_to_id")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User         @relation(fields: [senderId], references: [id])
-  replyTo      Message?     @relation("MessageReplies", fields: [replyToId], references: [id])
-  replies      Message[]    @relation("MessageReplies")
+  conversation Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User           @relation(fields: [senderId], references: [id])
+  replyTo      Message?       @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies      Message[]      @relation("MessageReplies")
   pinned       PinnedMessage?
 
   @@index([conversationId, createdAt])
@@ -455,9 +500,9 @@ model GroupSession {
   startsAt   DateTime @map("starts_at")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  group    Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  schedule GroupSchedule?     @relation(fields: [scheduleId], references: [id])
-  rsvps    GroupSessionRsvp[]
+  group            Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  schedule         GroupSchedule?     @relation(fields: [scheduleId], references: [id])
+  rsvps            GroupSessionRsvp[]
   squadFillInvites SquadFillInvite[]
 
   @@index([groupId, startsAt])
@@ -558,4 +603,103 @@ model AnalyticsEvent {
 
   @@index([name, createdAt])
   @@map("analytics_events")
+}
+
+// -----------------------------------------------------------------------------
+// Premium / Billing
+// -----------------------------------------------------------------------------
+
+/// Persisted record of a Google Play / App Store / manually-granted subscription.
+/// `purchaseToken` is unique per platform: the same token re-validates the same row.
+model Subscription {
+  id               String               @id @default(cuid())
+  userId           String               @map("user_id")
+  platform         SubscriptionPlatform
+  productId        String               @map("product_id")
+  /// Google Play purchaseToken (subscription) or Apple originalTransactionId.
+  purchaseToken    String               @map("purchase_token")
+  /// "originalOrderId" / linked purchase chain — useful for renewals and upgrades.
+  originalOrderId  String?              @map("original_order_id")
+  status           SubscriptionStatus   @default(active)
+  autoRenewing     Boolean              @default(true) @map("auto_renewing")
+  startedAt        DateTime             @default(now()) @map("started_at")
+  /// Authoritative current period end as reported by the store. Used to compute premium gates.
+  currentPeriodEnd DateTime             @map("current_period_end")
+  canceledAt       DateTime?            @map("canceled_at")
+  /// Snapshot of the latest provider verification payload (for debugging / audits).
+  rawPayload       Json?                @map("raw_payload")
+  lastVerifiedAt   DateTime             @default(now()) @map("last_verified_at")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, purchaseToken])
+  @@index([userId, status])
+  @@index([currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+/// One stable invite/referral code per user. Code is short, URL-safe, and case-insensitive.
+model ReferralCode {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  code      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("referral_codes")
+}
+
+/// A single "X invited Y" event. Created when the invitee redeems a code (either at
+/// signup or via the share-link landing page). `rewardGrantedAt` flips when the inviter
+/// has been credited (premium days) and is idempotent.
+model Referral {
+  id              String         @id @default(cuid())
+  inviterId       String         @map("inviter_id")
+  inviteeId       String?        @unique @map("invitee_id")
+  code            String
+  status          ReferralStatus @default(pending)
+  rewardDays      Int            @default(0) @map("reward_days")
+  rewardGrantedAt DateTime?      @map("reward_granted_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  inviter User  @relation("ReferralsSent", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee User? @relation("ReferralAsInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
+
+  @@index([inviterId, status])
+  @@index([code])
+  @@map("referrals")
+}
+
+// -----------------------------------------------------------------------------
+// Auto Group Formation (premium)
+// -----------------------------------------------------------------------------
+
+/// Tracks an in-flight "form me a group of N players for game X" request.
+/// The matcher fills slots by inviting candidates picked from the global queue and
+/// recent-players pools. One open request per user per game at a time.
+model AutoGroupRequest {
+  id            String                 @id @default(cuid())
+  userId        String                 @map("user_id")
+  groupId       String                 @unique @map("group_id")
+  gameId        String                 @map("game_id")
+  gameMode      SessionMode            @map("game_mode")
+  playStyle     PlayStyle              @map("play_style")
+  skillTier     SessionSkillTier       @map("skill_tier")
+  playersNeeded Int                    @map("players_needed")
+  minAge        Int?                   @map("min_age")
+  maxAge        Int?                   @map("max_age")
+  status        AutoGroupRequestStatus @default(searching)
+  expiresAt     DateTime               @map("expires_at")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@index([userId, status])
+  @@map("auto_group_requests")
 }

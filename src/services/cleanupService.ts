@@ -5,6 +5,7 @@ import { endMatch } from './matchmakingService';
 import { track } from './analyticsService';
 import { tryMatchGlobalQueue } from './progressiveMatchmakingService';
 import { sendSessionReminders } from './scheduleService';
+import { cronTickAutoGroups } from './autoGroupService';
 
 /** Every minute: expire matches past their TTL. */
 async function expireMatches(): Promise<void> {
@@ -74,5 +75,7 @@ export function startCleanupJobs(): void {
   cron.schedule('15 * * * *', () => void resetInconsistentUsers());
   cron.schedule('*/5 * * * *', () => void sendSessionReminders());
   cron.schedule('* * * * *', () => void runProgressiveMatchmaking());
+  // Every 30s: re-fan invites for premium auto-group requests and expire stale ones.
+  cron.schedule('*/30 * * * * *', () => void cronTickAutoGroups());
   logger.info('Cleanup cron jobs started.');
 }

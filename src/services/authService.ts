@@ -5,6 +5,7 @@ import { signJwt } from '../utils/jwt';
 import { HttpError } from '../utils/httpError';
 import { sendPasswordResetCode } from './emailService';
 import { verifyGoogleIdToken } from './googleAuthService';
+import { redeemReferralOnSignup } from './referralService';
 
 export interface PublicUser {
   id: string;
@@ -19,12 +20,18 @@ export interface PublicUser {
   currentMatchId: string | null;
   locale: string;
   isAdmin: boolean;
+  /** ISO date string when premium runs out (null = never had premium / fully expired). */
+  premiumUntil: string | null;
+  /** True iff `premiumUntil` is in the future. Convenience for the client. */
+  isPremium: boolean;
   gameProfiles: Array<{ gameId: string; nickname: string; playerId: string }>;
 }
 
 const PASSWORD_HASH_ROUNDS = 10;
 
 function toPublicUser(user: Awaited<ReturnType<typeof loadUserById>>): PublicUser {
+  const now = Date.now();
+  const premiumUntil = user.premiumUntil ?? null;
   return {
     id: user.id,
     email: user.email,
@@ -38,6 +45,8 @@ function toPublicUser(user: Awaited<ReturnType<typeof loadUserById>>): PublicUse
     currentMatchId: user.currentMatchId,
     locale: user.locale,
     isAdmin: user.isAdmin ?? false,
+    premiumUntil: premiumUntil ? premiumUntil.toISOString() : null,
+    isPremium: !!premiumUntil && premiumUntil.getTime() > now,
     gameProfiles: user.gameProfiles.map((p) => ({
       gameId: p.gameId,
       nickname: p.nickname,
@@ -61,6 +70,7 @@ export async function register(input: {
   name: string;
   age: number;
   locale?: string;
+  inviteCode?: string;
 }) {
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) throw HttpError.conflict('Email already in use', 'email_in_use');
@@ -77,6 +87,11 @@ export async function register(input: {
     },
     include: { gameProfiles: true },
   });
+
+  // Best-effort referral redemption — non-fatal on errors.
+  if (input.inviteCode) {
+    await redeemReferralOnSignup(created.id, input.inviteCode);
+  }
 
   const token = signJwt({ sub: created.id, email: created.email });
   return { token, user: toPublicUser(created) };

@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { HttpError } from '../utils/httpError';
 import { getBlockedUserIds } from './blockService';
 import { sendPush } from './pushService';
+import { notifyMemberJoined } from './autoGroupService';
 
 type Candidate = {
   userId: string;
@@ -148,6 +149,17 @@ export async function respondSquadFillInvite(inviteId: string, userId: string, a
       create: { groupId: invite.groupId, userId, role: 'member' },
       update: {},
     });
+    const conv = await tx.conversation.findUnique({
+      where: { groupId: invite.groupId },
+      select: { id: true },
+    });
+    if (conv) {
+      await tx.conversationParticipant.upsert({
+        where: { conversationId_userId: { conversationId: conv.id, userId } },
+        create: { conversationId: conv.id, userId },
+        update: {},
+      });
+    }
     if (invite.sessionId) {
       await tx.groupSessionRsvp.upsert({
         where: { sessionId_userId: { sessionId: invite.sessionId, userId } },
@@ -156,6 +168,9 @@ export async function respondSquadFillInvite(inviteId: string, userId: string, a
       });
     }
   });
+
+  // If this group was auto-formed, possibly mark the request as fulfilled.
+  void notifyMemberJoined(invite.groupId);
 
   return { ok: true, groupId: invite.groupId };
 }

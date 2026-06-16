@@ -25,6 +25,9 @@ import { groupsRouter } from './controllers/groupsController';
 import { chatRouter } from './controllers/chatController';
 import { moderationRouter } from './controllers/moderationController';
 import { adminRouter } from './controllers/adminController';
+import { billingRouter } from './controllers/billingController';
+import { referralRouter, inviteRedirectRouter } from './controllers/referralController';
+import { autoGroupRouter } from './controllers/autoGroupController';
 
 export function buildApp(): express.Express {
   const app = express();
@@ -115,6 +118,13 @@ export function buildApp(): express.Express {
   app.use('/api/v1/chats', chatRouter);
   app.use('/api/v1/moderation', moderationRouter);
   app.use('/api/v1/admin', adminRouter);
+  app.use('/api/v1/billing', billingRouter);
+  app.use('/api/v1/referrals', referralRouter);
+  app.use('/api/v1/auto-groups', autoGroupRouter);
+
+  // Public invite landing page: GET /i/<code> → Play Store / App Store / HTML page.
+  // No /api/v1 prefix so the share URL is short & friendly to paste anywhere.
+  app.use('/i', inviteRedirectRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

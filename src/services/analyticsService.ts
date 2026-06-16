@@ -33,7 +33,13 @@ export type AnalyticsEventName =
   | 'admin_game_updated'
   | 'admin_game_deleted'
   | 'admin_session_deleted'
-  | 'admin_match_finished';
+  | 'admin_match_finished'
+  | 'subscription_verified'
+  | 'premium_granted'
+  | 'referral_redeemed'
+  | 'auto_group_started'
+  | 'auto_group_canceled'
+  | 'auto_group_fulfilled';
 
 export async function track(
   name: AnalyticsEventName,

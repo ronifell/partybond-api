@@ -13,6 +13,8 @@ const registerSchema = z.object({
   name: z.string().min(2).max(60),
   age: z.coerce.number().int().min(13).max(120),
   locale: z.string().optional(),
+  /** Optional invite code redeemed at signup — credits the inviter with premium days. */
+  inviteCode: z.string().min(2).max(16).optional(),
 });
 
 const loginSchema = z.object({
@@ -49,8 +51,9 @@ authRouter.post(
   '/register',
   validate(registerSchema),
   asyncHandler(async (req, res) => {
-    const result = await authService.register(req.body);
-    void track('register', result.user.id);
+    const body = req.body as z.infer<typeof registerSchema>;
+    const result = await authService.register(body);
+    void track('register', result.user.id, body.inviteCode ? { inviteCode: body.inviteCode } : undefined);
     res.status(201).json(result);
   }),
 );
