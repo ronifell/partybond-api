@@ -62,6 +62,26 @@ Premium unlocks the **automatic group formation** feature. The backend verifies 
 5. Refresh from the client side with `GET /billing/refresh` (re-checks all stored tokens against Google). Schedule a daily cron in production if you need defensive expiry handling beyond the 30s `cronTickAutoGroups` tick.
 6. To grant premium manually (referral reward, support, comp): `grantManualPremium(userId, days)` from `billingService` is exposed indirectly through `redeemReferralOnSignup`.
 
+#### Mock billing (testing without Google Play)
+
+While the real Play Billing pipeline is being set up, you can flip on a mock provider so the **Upgrade to Premium** button works end-to-end without any store integration. Set in `.env`:
+
+```
+BILLING_MOCK_ENABLED=true
+BILLING_MOCK_DURATION_DAYS=30
+```
+
+When enabled:
+
+- `GET /billing/products` returns `{ mockEnabled: true, mockDurationDays }`.
+- The frontend auto-detects this and routes the Upgrade button to `POST /billing/mock/purchase`.
+- The server creates a `Subscription` row (`platform = manual`, `purchaseToken = mock:<userId>:<ts>`) and bumps `premiumUntil` by the configured days.
+- All downstream code paths (`/billing/me`, `/billing/refresh`, premium gates, analytics) work identically to a real purchase — only the verification step is skipped.
+
+To switch to real billing, set `BILLING_MOCK_ENABLED=false` and finish the Google Play setup above. The `POST /billing/mock/purchase` endpoint hard-rejects with `404 mock_billing_disabled` when off, so leaving stale clients pointed at it is safe.
+
+**Never leave this enabled in a build that ships to real users.**
+
 ### Referrals & invite links
 
 Users share `${INVITE_BASE_URL}/i/<CODE>` (e.g. `https://api.partybond.app/i/AB23KX9Y`). The backend serves a smart redirect:
@@ -110,6 +130,7 @@ All under `/api/v1`. Bearer JWT required unless noted.
 | GET | `/billing/me` | Current user's premium status + stored subscriptions. |
 | POST | `/billing/refresh` | Re-verify every stored subscription against Google Play. |
 | POST | `/billing/google-play/verify` | `{ productId, purchaseToken }` — verify a fresh purchase, persist, grant Premium. |
+| POST | `/billing/mock/purchase` | **Only when `BILLING_MOCK_ENABLED=true`.** Simulates a successful purchase and grants Premium for `BILLING_MOCK_DURATION_DAYS`. |
 | GET | `/referrals/me` | User's invite code + shareable link + stats. |
 | GET | `/referrals/history` | List of redemptions this user made (as inviter). |
 | POST | `/referrals/redeem` | `{ code }` — redeem post-signup (mostly used by the register flow). |

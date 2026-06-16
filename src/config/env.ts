@@ -85,6 +85,21 @@ export const env = {
     },
   },
 
+  /**
+   * Mock billing provider — when enabled, the client can "purchase" premium
+   * without going through Google Play / App Store. Useful while the real IAP
+   * pipeline is being set up. Disabled by default. NEVER leave this on in a
+   * production build that ships to real users.
+   */
+  billingMock: {
+    enabled: (cleanEnv(process.env.BILLING_MOCK_ENABLED) || 'false').toLowerCase() === 'true',
+    /** How many premium days the mock purchase grants per click. */
+    durationDays: Math.max(
+      1,
+      Number(cleanEnv(process.env.BILLING_MOCK_DURATION_DAYS) || 30),
+    ),
+  },
+
   /** Referral / invite-a-friend program. */
   referral: {
     /** Base URL of the public invite landing page (e.g. https://api.partybond.com/i). */

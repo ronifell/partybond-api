@@ -263,6 +263,76 @@ export async function grantManualPremium(
   return newEnd;
 }
 
+/**
+ * Mock provider — pretends a successful store purchase happened and grants premium.
+ * Persists a `manual`-platform Subscription row tagged `mock:` so it's distinguishable
+ * from real ones and so the same code paths (premium gate, /billing/me, refresh) work.
+ *
+ * Wired through `POST /billing/mock/purchase` and only callable when
+ * `BILLING_MOCK_ENABLED=true`.
+ *
+ * When you're ready to integrate real iOS billing (StoreKit) or any other provider,
+ * mirror this shape: create a `verify<Provider>Purchase(userId, payload)` function
+ * that ends with `syncPremiumUntil(userId)` and `track('subscription_verified', …)`.
+ */
+export async function simulatePremiumPurchase(
+  userId: string,
+  input: { productId?: string; durationDays?: number } = {},
+) {
+  if (!env.billingMock.enabled) {
+    throw HttpError.badRequest('Mock billing is disabled', 'mock_billing_disabled');
+  }
+
+  const productId =
+    input.productId && env.googlePlay.premiumProductIds.includes(input.productId)
+      ? input.productId
+      : env.googlePlay.premiumProductIds[0] ?? 'partybond.premium.monthly';
+
+  const days = Math.max(1, Math.floor(input.durationDays ?? env.billingMock.durationDays));
+  const now = new Date();
+  const baseline = await getCurrentPremiumUntil(userId);
+  const start = baseline && baseline > now ? baseline : now;
+  const newEnd = new Date(start.getTime() + days * 24 * 60 * 60_000);
+
+  const subscription = await prisma.subscription.create({
+    data: {
+      userId,
+      platform: 'manual',
+      productId,
+      // Tag the synthetic token so it never collides with real Play/Apple tokens.
+      purchaseToken: `mock:${userId}:${now.getTime()}`,
+      status: 'active',
+      autoRenewing: false,
+      startedAt: now,
+      currentPeriodEnd: newEnd,
+      rawPayload: {
+        provider: 'mock',
+        days,
+        grantedAt: now.toISOString(),
+      },
+    },
+  });
+
+  await syncPremiumUntil(userId);
+
+  void track('subscription_verified', userId, {
+    platform: 'mock',
+    productId,
+    status: 'active',
+    autoRenewing: false,
+    expiresAt: newEnd.toISOString(),
+  });
+
+  return {
+    id: subscription.id,
+    productId: subscription.productId,
+    status: subscription.status,
+    autoRenewing: subscription.autoRenewing,
+    currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+    isEntitling: isEntitlingStatus(subscription.status),
+  };
+}
+
 async function getCurrentPremiumUntil(userId: string): Promise<Date | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
