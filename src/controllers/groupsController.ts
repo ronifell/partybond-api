@@ -165,6 +165,15 @@ groupsRouter.post(
   }),
 );
 
+groupsRouter.get(
+  '/squad-fill/pending',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const invites = await squadFillService.listMyPendingSquadFillInvites(req.userId!);
+    res.json({ invites });
+  }),
+);
+
 groupsRouter.post(
   '/squad-fill/:inviteId/respond',
   requireAuth,

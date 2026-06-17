@@ -132,6 +132,38 @@ export async function inviteSquadFill(
   return { inviteId: invite.id };
 }
 
+/**
+ * Returns all squad-fill invites currently pending for `userId`. The shape
+ * mirrors `GroupInvite` so the frontend's GlobalInviteOverlay can render the
+ * same Accept / Decline modal card. `isAutoFormed` lets the UI label the card
+ * as an "auto-squad invite" when the group came from the auto-matcher.
+ */
+export async function listMyPendingSquadFillInvites(userId: string) {
+  const invites = await prisma.squadFillInvite.findMany({
+    where: {
+      inviteeId: userId,
+      status: 'pending',
+      expiresAt: { gt: new Date() },
+    },
+    include: {
+      group: { select: { id: true, name: true, photoUrl: true, isAutoFormed: true } },
+      inviter: { select: { id: true, name: true, photoUrl: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  return invites.map((i) => ({
+    id: i.id,
+    group: {
+      id: i.group.id,
+      name: i.group.name,
+      photoUrl: i.group.photoUrl,
+      isAutoFormed: i.group.isAutoFormed,
+    },
+    inviter: i.inviter,
+    expiresAt: i.expiresAt.toISOString(),
+  }));
+}
+
 export async function respondSquadFillInvite(inviteId: string, userId: string, accept: boolean) {
   const invite = await prisma.squadFillInvite.findUnique({ where: { id: inviteId } });
   if (!invite || invite.inviteeId !== userId) throw HttpError.notFound('Invite not found');
