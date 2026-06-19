@@ -42,8 +42,8 @@ async function main() {
   }
 
   const ageNum = Number.parseInt(ageArg, 10);
-  if (!Number.isFinite(ageNum) || ageNum < 13 || ageNum > 120) {
-    console.error('Invalid age. Must be an integer between 13 and 120.');
+  if (!Number.isFinite(ageNum) || ageNum < 14 || ageNum > 120) {
+    console.error('Invalid age. Must be an integer between 14 and 120.');
     process.exit(3);
   }
   if (passwordArg.length < 6) {

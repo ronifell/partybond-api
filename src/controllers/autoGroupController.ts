@@ -20,8 +20,8 @@ const createSchema = z.object({
   playStyle: z.enum(['relaxed', 'focused']),
   skillTier: z.enum(['beginner', 'intermediate', 'advanced', 'veteran']),
   playersNeeded: z.coerce.number().int().min(2).max(16),
-  minAge: z.coerce.number().int().min(13).max(120).optional(),
-  maxAge: z.coerce.number().int().min(13).max(120).optional(),
+  minAge: z.coerce.number().int().min(14).max(120).optional(),
+  maxAge: z.coerce.number().int().min(14).max(120).optional(),
 });
 
 autoGroupRouter.get(

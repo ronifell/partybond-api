@@ -11,7 +11,7 @@ const registerSchema = z.object({
   email: z.string().email().toLowerCase(),
   password: z.string().min(6).max(128),
   name: z.string().min(2).max(60),
-  age: z.coerce.number().int().min(13).max(120),
+  age: z.coerce.number().int().min(14).max(120),
   locale: z.string().optional(),
   /** Optional invite code redeemed at signup — credits the inviter with premium days. */
   inviteCode: z.string().min(2).max(16).optional(),

@@ -75,7 +75,7 @@ function normalizeProfilePatchInput(val: unknown): unknown {
 
 const updateProfileFields = z.object({
   name: z.string().min(2).max(60).optional(),
-  age: z.coerce.number().int().min(13).max(120).optional(),
+  age: z.coerce.number().int().min(14).max(120).optional(),
   locale: z.enum(['en', 'pt']).optional(),
   selectedGame: z.string().optional(),
   lookingFor: z
