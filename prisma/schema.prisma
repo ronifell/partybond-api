@@ -583,12 +583,13 @@ model UserBlock {
 }
 
 model UserReport {
-  id           String         @id @default(cuid())
-  reporterId   String         @map("reporter_id")
-  reportedId   String         @map("reported_id")
-  category     ReportCategory
-  details      String?        @db.Text
-  status       ReportStatus   @default(open)
+  id              String         @id @default(cuid())
+  reporterId      String         @map("reporter_id")
+  reportedId      String         @map("reported_id")
+  category        ReportCategory
+  details         String?        @db.Text
+  attachmentUrls  String[]       @default([]) @map("attachment_urls")
+  status          ReportStatus   @default(open)
   adminNote    String?        @map("admin_note") @db.Text
   resolvedAt   DateTime?      @map("resolved_at")
   resolvedById String?        @map("resolved_by_id")
