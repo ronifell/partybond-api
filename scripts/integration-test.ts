@@ -130,7 +130,7 @@ async function main() {
     // --- Progressive queue + match ---
     await req('POST', '/matchmaking/queue', {
       token: tokenA,
-      body: { gameId, gameMode: 'casual', playStyle: 'relaxed' },
+      body: { gameId, gameMode: 'casual', playStyle: 'relaxed', platform: 'pc' },
     });
     const statusA = await req('GET', '/matchmaking/queue/status', { token: tokenA });
     const phase = (statusA.data.status as { phase: number })?.phase;
@@ -139,7 +139,7 @@ async function main() {
 
     await req('POST', '/matchmaking/queue', {
       token: tokenB,
-      body: { gameId, gameMode: 'casual', playStyle: 'relaxed' },
+      body: { gameId, gameMode: 'casual', playStyle: 'relaxed', platform: 'pc' },
     });
     ok('User B joined progressive queue');
 

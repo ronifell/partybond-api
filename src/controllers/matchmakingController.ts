@@ -8,6 +8,7 @@ import {
   leaveGlobalQueue,
   getGlobalQueueStatus,
 } from '../services/progressiveMatchmakingService';
+import { gamePlatformSchema } from '../constants/gamePlatform';
 
 export const matchmakingRouter = Router();
 
@@ -15,6 +16,7 @@ const joinSchema = z.object({
   gameId: z.string().min(1),
   gameMode: z.enum(['casual', 'competitive']),
   playStyle: z.enum(['relaxed', 'focused']),
+  platform: gamePlatformSchema,
 });
 
 matchmakingRouter.post(

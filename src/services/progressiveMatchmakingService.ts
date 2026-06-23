@@ -1,4 +1,4 @@
-import type { PlayStyle, Prisma, SessionMode } from '@prisma/client';
+import type { GamePlatform, PlayStyle, Prisma, SessionMode } from '@prisma/client';
 import { prisma } from '../config/database';
 import { HttpError } from '../utils/httpError';
 import { logger } from '../utils/logger';
@@ -21,10 +21,23 @@ export function getQueuePhase(joinedAt: Date): 1 | 2 | 3 {
 }
 
 function areCompatible(
-  a: { gameId: string; gameMode: SessionMode; playStyle: PlayStyle; joinedAt: Date },
-  b: { gameId: string; gameMode: SessionMode; playStyle: PlayStyle; joinedAt: Date },
+  a: {
+    gameId: string;
+    gameMode: SessionMode;
+    playStyle: PlayStyle;
+    platform: GamePlatform;
+    joinedAt: Date;
+  },
+  b: {
+    gameId: string;
+    gameMode: SessionMode;
+    playStyle: PlayStyle;
+    platform: GamePlatform;
+    joinedAt: Date;
+  },
 ): boolean {
   if (a.gameId !== b.gameId) return false;
+  if (a.platform !== b.platform) return false;
   const phase = Math.max(getQueuePhase(a.joinedAt), getQueuePhase(b.joinedAt)) as 1 | 2 | 3;
   if (phase === 1) return a.gameMode === b.gameMode && a.playStyle === b.playStyle;
   if (phase === 2) return a.gameMode === b.gameMode;
@@ -33,7 +46,7 @@ function areCompatible(
 
 export async function joinGlobalQueue(
   userId: string,
-  input: { gameId: string; gameMode: SessionMode; playStyle: PlayStyle },
+  input: { gameId: string; gameMode: SessionMode; playStyle: PlayStyle; platform: GamePlatform },
 ) {
   const game = await prisma.game.findUnique({ where: { id: input.gameId } });
   if (!game || game.status !== 'active') {
@@ -59,13 +72,20 @@ export async function joinGlobalQueue(
         gameId: input.gameId,
         gameMode: input.gameMode,
         playStyle: input.playStyle,
+        platform: input.platform,
       },
       update: {
         gameId: input.gameId,
         gameMode: input.gameMode,
         playStyle: input.playStyle,
+        platform: input.platform,
         joinedAt: new Date(),
       },
+    });
+
+    await tx.userGameProfile.update({
+      where: { userId_gameId: { userId, gameId: input.gameId } },
+      data: { platform: input.platform },
     });
 
     await tx.user.update({
@@ -97,6 +117,7 @@ export async function getGlobalQueueStatus(userId: string) {
     gameId: entry.gameId,
     gameMode: entry.gameMode,
     playStyle: entry.playStyle,
+    platform: entry.platform,
     phase: getQueuePhase(entry.joinedAt),
     waitedSeconds,
     joinedAt: entry.joinedAt.toISOString(),

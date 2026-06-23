@@ -24,7 +24,7 @@ export interface PublicUser {
   premiumUntil: string | null;
   /** True iff `premiumUntil` is in the future. Convenience for the client. */
   isPremium: boolean;
-  gameProfiles: Array<{ gameId: string; nickname: string; playerId: string }>;
+  gameProfiles: Array<{ gameId: string; nickname: string; playerId: string; platform: string | null }>;
 }
 
 const PASSWORD_HASH_ROUNDS = 10;
@@ -51,6 +51,7 @@ function toPublicUser(user: Awaited<ReturnType<typeof loadUserById>>): PublicUse
       gameId: p.gameId,
       nickname: p.nickname,
       playerId: p.playerId,
+      platform: p.platform,
     })),
   };
 }

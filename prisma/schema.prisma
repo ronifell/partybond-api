@@ -41,6 +41,13 @@ enum PlayStyle {
   focused
 }
 
+enum GamePlatform {
+  playstation
+  xbox
+  pc
+  mobile
+}
+
 enum SessionSkillTier {
   beginner
   intermediate
@@ -298,12 +305,13 @@ model QueueEntry {
 
 /// Progressive matchmaking pool (per game, not per session).
 model GlobalQueueEntry {
-  id        String      @id @default(cuid())
-  userId    String      @map("user_id")
-  gameId    String      @map("game_id")
-  gameMode  SessionMode @map("game_mode")
-  playStyle PlayStyle   @map("play_style")
-  joinedAt  DateTime    @default(now()) @map("joined_at")
+  id        String       @id @default(cuid())
+  userId    String       @map("user_id")
+  gameId    String       @map("game_id")
+  gameMode  SessionMode  @map("game_mode")
+  playStyle PlayStyle    @map("play_style")
+  platform  GamePlatform @default(mobile)
+  joinedAt  DateTime     @default(now()) @map("joined_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
