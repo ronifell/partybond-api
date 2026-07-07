@@ -309,13 +309,13 @@ async function main() {
   }
 
   // --- Remote server check (user's Expo URL) ---
-  const remote = 'http://18.231.112.145:4000';
+  const remote = 'http://179.197.64.25:4000';
   try {
     const r = await fetch(`${remote}/api/v1/matchmaking/queue/status`, {
       headers: { Authorization: 'Bearer x' },
     });
     if (r.status === 404) {
-      console.log('\n  ⚠ Remote API (18.231.112.145) missing /matchmaking — Expo Quick Join will fail until deployed.\n');
+      console.log('\n  ⚠ Remote API (179.197.64.25) missing /matchmaking — Expo Quick Join will fail until deployed.\n');
     } else {
       ok('Remote server has matchmaking routes', `status ${r.status}`);
     }
