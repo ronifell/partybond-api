@@ -17,6 +17,13 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     });
     return;
   }
+  // Malformed JSON body (express.json / body-parser).
+  if (err instanceof SyntaxError && 'body' in (err as SyntaxError & { body?: unknown })) {
+    res.status(400).json({
+      error: { code: 'invalid_json', message: 'Request body must be valid JSON' },
+    });
+    return;
+  }
   logger.error({ err }, 'Unhandled error');
   res.status(500).json({
     error: { code: 'internal_error', message: 'Internal server error' },
