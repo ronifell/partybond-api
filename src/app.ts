@@ -33,8 +33,8 @@ export function buildApp(): express.Express {
   const app = express();
 
   app.disable('x-powered-by');
-  // Nginx reverse proxy sets X-Forwarded-*; required for rate-limit + req.ip in production.
-  if (isProd) app.set('trust proxy', 1);
+  // Single Nginx hop in front of Node — required for rate-limit + req.ip behind a reverse proxy.
+  app.set('trust proxy', 1);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(
     cors({
