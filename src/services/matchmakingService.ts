@@ -6,10 +6,30 @@ import { track } from './analyticsService';
 import { emitMatchCreated } from './matchNotifyService';
 import { recordRecentPlayersFromMatch } from './recentPlayerService';
 import { TX_OPTIONS } from '../config/prismaTx';
+import { isUserSocketConnected } from '../socket';
 
 const MATCH_TTL_MIN = 15;
+/**
+ * A user is only considered "truly present" when their client has heartbeated
+ * within this window. The client sends a heartbeat every 30s (see
+ * `Partybond-frontend/src/socket/index.ts`), so 90s allows for one dropped
+ * heartbeat before we treat the session as stale — prevents pairing a real
+ * player with a ghost whose socket has silently died.
+ */
+const PRESENCE_MAX_STALE_MS = 90_000;
 
 type Tx = Prisma.TransactionClient;
+
+/**
+ * True when the user is actually present right now: they have a live socket
+ * AND their heartbeat is fresh. Callers must pass `lastSeenAt` from the same
+ * transaction that will create the match, so we never pair with a ghost.
+ */
+export function isUserPresent(userId: string, lastSeenAt: Date | null): boolean {
+  if (!isUserSocketConnected(userId)) return false;
+  if (!lastSeenAt) return false;
+  return Date.now() - lastSeenAt.getTime() <= PRESENCE_MAX_STALE_MS;
+}
 
 /**
  * Try to pair two waiting users in a session into a Match.
@@ -37,13 +57,31 @@ export async function tryCreateMatchForSession(sessionId: string) {
 
     const [a, b] = entries;
 
-    // Validate user states
+    // Validate user states AND presence (socket + fresh heartbeat).
     const users = await tx.user.findMany({
       where: { id: { in: [a.user_id, b.user_id] } },
-      select: { id: true, state: true },
+      select: { id: true, state: true, lastSeenAt: true },
     });
     if (users.length < 2 || users.some((u) => u.state !== 'in_queue')) {
       // bail out — let later attempts retry
+      return null;
+    }
+
+    const ghost = users.find((u) => !isUserPresent(u.id, u.lastSeenAt));
+    if (ghost) {
+      // A queued user has gone silent. Evict them from the queue so we don't
+      // keep spinning on the same stale entry, then bail out — the remaining
+      // player stays in queue and the next matchmaking tick can pair them
+      // with a real teammate.
+      await tx.queueEntry.deleteMany({ where: { userId: ghost.id } });
+      await tx.user.updateMany({
+        where: { id: ghost.id, state: 'in_queue' },
+        data: { state: 'idle', currentSessionId: null },
+      });
+      logger.info(
+        { userId: ghost.id, sessionId },
+        'Evicted ghost user from session queue',
+      );
       return null;
     }
 

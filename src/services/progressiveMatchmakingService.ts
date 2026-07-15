@@ -6,6 +6,7 @@ import { track } from './analyticsService';
 import { emitMatchCreated } from './matchNotifyService';
 import { getBlockedUserIds } from './blockService';
 import { TX_OPTIONS } from '../config/prismaTx';
+import { isUserPresent } from './matchmakingService';
 
 const MATCH_TTL_MIN = 15;
 const PHASE1_MS = 25_000;
@@ -136,10 +137,40 @@ export async function tryMatchGlobalQueue(gameId: string): Promise<void> {
 }
 
 async function tryCreateProgressiveMatch(gameId: string): Promise<boolean> {
-  const entries = await prisma.globalQueueEntry.findMany({
+  const rawEntries = await prisma.globalQueueEntry.findMany({
     where: { gameId },
     orderBy: { joinedAt: 'asc' },
   });
+  if (rawEntries.length < 2) return false;
+
+  // Drop entries whose owner is no longer connected OR hasn't heartbeated in
+  // the presence window — happens when the app was closed without cleanly
+  // leaving the queue, or the socket appears connected server-side while the
+  // client TCP is actually dead. Without this check we would pair a real
+  // player with a "ghost" who won't ever respond.
+  const presenceRows = await prisma.user.findMany({
+    where: { id: { in: rawEntries.map((e) => e.userId) } },
+    select: { id: true, lastSeenAt: true },
+  });
+  const lastSeenById = new Map(presenceRows.map((r) => [r.id, r.lastSeenAt]));
+
+  const stale: string[] = [];
+  const entries: typeof rawEntries = [];
+  for (const e of rawEntries) {
+    if (isUserPresent(e.userId, lastSeenById.get(e.userId) ?? null)) {
+      entries.push(e);
+    } else {
+      stale.push(e.userId);
+    }
+  }
+  if (stale.length) {
+    await prisma.globalQueueEntry.deleteMany({ where: { userId: { in: stale } } });
+    await prisma.user.updateMany({
+      where: { id: { in: stale }, state: 'in_queue' },
+      data: { state: 'idle', currentSessionId: null },
+    });
+    logger.info({ count: stale.length, gameId }, 'Pruned offline queue entries');
+  }
   if (entries.length < 2) return false;
 
   const blockedCache = new Map<string, Set<string>>();
