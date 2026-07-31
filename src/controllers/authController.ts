@@ -6,12 +6,13 @@ import { validate } from '../middlewares/validate';
 import { requireAuth } from '../middlewares/auth';
 import * as authService from '../services/authService';
 import { track } from '../services/analyticsService';
+import { MAX_USER_AGE, MIN_USER_AGE } from '../config/userPolicy';
 
 const registerSchema = z.object({
   email: z.string().email().toLowerCase(),
   password: z.string().min(6).max(128),
   name: z.string().min(2).max(60),
-  age: z.coerce.number().int().min(14).max(120),
+  age: z.coerce.number().int().min(MIN_USER_AGE).max(MAX_USER_AGE),
   locale: z.string().optional(),
   /** Optional invite code redeemed at signup — credits the inviter with premium days. */
   inviteCode: z.string().min(2).max(16).optional(),

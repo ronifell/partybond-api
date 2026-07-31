@@ -15,6 +15,7 @@ import { listRecentPlayers } from '../services/recentPlayerService';
 import { listSquadCandidates } from '../services/sessionSquadService';
 import { getBlockedUserIds } from '../services/blockService';
 import { env } from '../config/env';
+import { MAX_USER_AGE, MIN_USER_AGE } from '../config/userPolicy';
 
 export const userRouter = Router();
 
@@ -75,7 +76,7 @@ function normalizeProfilePatchInput(val: unknown): unknown {
 
 const updateProfileFields = z.object({
   name: z.string().min(2).max(60).optional(),
-  age: z.coerce.number().int().min(14).max(120).optional(),
+  age: z.coerce.number().int().min(MIN_USER_AGE).max(MAX_USER_AGE).optional(),
   locale: z.enum(['en', 'pt']).optional(),
   selectedGame: z.string().optional(),
   lookingFor: z

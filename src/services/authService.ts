@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database';
 import { signJwt } from '../utils/jwt';
 import { HttpError } from '../utils/httpError';
+import { MIN_USER_AGE, MINOR_NOT_ALLOWED_MESSAGE } from '../config/userPolicy';
 import { sendPasswordResetCode } from './emailService';
 import { verifyGoogleIdToken } from './googleAuthService';
 import { redeemReferralOnSignup } from './referralService';
@@ -75,6 +76,10 @@ export async function register(input: {
 }) {
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) throw HttpError.conflict('Email already in use', 'email_in_use');
+
+  if (input.age < MIN_USER_AGE) {
+    throw HttpError.badRequest(MINOR_NOT_ALLOWED_MESSAGE, 'minor_not_allowed');
+  }
 
   const passwordHash = await bcrypt.hash(input.password, PASSWORD_HASH_ROUNDS);
 
