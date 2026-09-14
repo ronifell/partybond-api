@@ -231,6 +231,7 @@ userRouter.get(
       where: {
         gameId,
         userId: { notIn: [...exclude] },
+        user: { isGuest: false },
       },
       include: {
         user: {

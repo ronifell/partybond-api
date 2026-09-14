@@ -6,6 +6,7 @@ import { track } from './analyticsService';
 import { tryMatchGlobalQueue } from './progressiveMatchmakingService';
 import { sendSessionReminders } from './scheduleService';
 import { cronTickAutoGroups } from './autoGroupService';
+import { expireOpenRescues } from './squadRescueService';
 
 /** Every minute: expire matches past their TTL. */
 async function expireMatches(): Promise<void> {
@@ -28,7 +29,7 @@ async function expireMatches(): Promise<void> {
 /** Every 5 min: mark scheduled sessions as active (when scheduled_at passes). */
 async function activateScheduledSessions(): Promise<void> {
   const res = await prisma.session.updateMany({
-    where: { status: 'open', scheduledAt: { lte: new Date() } },
+    where: { status: 'open', scheduledAt: { lte: new Date() }, rescueCode: null },
     data: { status: 'active' },
   });
   if (res.count) logger.info({ count: res.count }, 'Activated scheduled sessions');
@@ -38,7 +39,7 @@ async function activateScheduledSessions(): Promise<void> {
 async function cleanOldSessions(): Promise<void> {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const res = await prisma.session.deleteMany({
-    where: { status: 'finished', updatedAt: { lt: dayAgo } },
+    where: { status: 'finished', updatedAt: { lt: dayAgo }, rescueCode: null },
   });
   if (res.count) logger.info({ count: res.count }, 'Deleted finished sessions');
 }
@@ -77,5 +78,10 @@ export function startCleanupJobs(): void {
   cron.schedule('* * * * *', () => void runProgressiveMatchmaking());
   // Every 30s: re-fan invites for premium auto-group requests and expire stale ones.
   cron.schedule('*/30 * * * * *', () => void cronTickAutoGroups());
+  cron.schedule('* * * * *', () => {
+    void expireOpenRescues().then((count) => {
+      if (count) logger.info({ count }, 'Expired Squad Rescue sessions');
+    });
+  });
   logger.info('Cleanup cron jobs started.');
 }

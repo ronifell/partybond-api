@@ -150,6 +150,15 @@ enum AutoGroupRequestStatus {
   canceled
 }
 
+/// Web Squad Rescue lifecycle. Independent from SessionStatus so mobile
+/// matchmaking sessions keep using open / active / finished unchanged.
+enum SquadRescueStatus {
+  open
+  completed
+  cancelled
+  expired
+}
+
 // -----------------------------------------------------------------------------
 // Models
 // -----------------------------------------------------------------------------
@@ -228,6 +237,10 @@ model User {
   referralsSent           Referral[]                @relation("ReferralsSent")
   referralAsInvitee       Referral?                 @relation("ReferralAsInvitee")
   autoGroupRequests       AutoGroupRequest[]
+  /// Lightweight web identity for Squad Rescue guests (not a mobile account).
+  isGuest                 Boolean               @default(false) @map("is_guest")
+  guestKey                String?               @unique @map("guest_key")
+  rescueMemberships       SquadRescueMember[]
 
   @@map("users")
 }
@@ -278,15 +291,64 @@ model Session {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
-  game         Game                 @relation(fields: [gameId], references: [id])
-  createdBy    User                 @relation("CreatedSessions", fields: [createdById], references: [id])
-  queue        QueueEntry[]
-  matches      Match[]
-  squadInvites SessionSquadInvite[]
+  /// Squad Rescue (web) — all nullable so existing mobile sessions are unchanged.
+  rescueCode        String?            @unique @map("rescue_code")
+  rescueStatus      SquadRescueStatus? @map("rescue_status")
+  rescuePlatform    GamePlatform?      @map("rescue_platform")
+  rescueMicRequired Boolean?           @map("rescue_mic_required")
+  rescueGameLabel   String?            @map("rescue_game_label") @db.VarChar(80)
+  rescueExpiresAt   DateTime?          @map("rescue_expires_at")
+  rescueCommunityId String?            @map("rescue_community_id")
+  rescueClosedAt    DateTime?          @map("rescue_closed_at")
+
+  game            Game                 @relation(fields: [gameId], references: [id])
+  createdBy       User                 @relation("CreatedSessions", fields: [createdById], references: [id])
+  queue           QueueEntry[]
+  matches         Match[]
+  squadInvites    SessionSquadInvite[]
+  rescueMembers   SquadRescueMember[]
+  rescueCommunity Community?           @relation(fields: [rescueCommunityId], references: [id], onDelete: SetNull)
 
   @@index([gameId, status, scheduledAt])
   @@index([gameId, status, gameMode, skillTier])
+  @@index([rescueStatus, rescueExpiresAt])
   @@map("sessions")
+}
+
+/// A player (guest or future app user) sitting in a Squad Rescue session.
+model SquadRescueMember {
+  id        String    @id @default(cuid())
+  sessionId String    @map("session_id")
+  userId    String    @map("user_id")
+  nickname  String
+  gameUid   String    @map("game_uid")
+  hasMic    Boolean   @default(false) @map("has_mic")
+  isCreator Boolean   @default(false) @map("is_creator")
+  leftAt    DateTime? @map("left_at")
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([sessionId, leftAt])
+  @@map("squad_rescue_members")
+}
+
+/// Public community landing used only as attribution + three basic counters.
+model Community {
+  id              String   @id
+  name            String
+  externalUrl     String?  @map("external_url")
+  visitCount      Int      @default(0) @map("visit_count")
+  squadsCreated   Int      @default(0) @map("squads_created")
+  squadsCompleted Int      @default(0) @map("squads_completed")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  sessions Session[]
+
+  @@map("communities")
 }
 
 model QueueEntry {

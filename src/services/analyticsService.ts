@@ -39,7 +39,14 @@ export type AnalyticsEventName =
   | 'referral_redeemed'
   | 'auto_group_started'
   | 'auto_group_canceled'
-  | 'auto_group_fulfilled';
+  | 'auto_group_fulfilled'
+  | 'rescue_created'
+  | 'rescue_joined'
+  | 'rescue_left'
+  | 'rescue_ended'
+  | 'rescue_completed'
+  | 'rescue_expired'
+  | 'rescue_play_again';
 
 export async function track(
   name: AnalyticsEventName,

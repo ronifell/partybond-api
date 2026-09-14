@@ -59,7 +59,10 @@ export function initSocket(httpServer: HttpServer): IoServer {
     const token =
       (socket.handshake.auth?.token as string | undefined) ??
       (socket.handshake.headers['authorization'] as string | undefined)?.replace(/^Bearer\s+/, '');
-    if (!token) return next(new Error('unauthorized'));
+    if (!token) {
+      socket.data.anonymous = true;
+      return next();
+    }
     try {
       const payload = verifyJwt(token);
       socket.data.userId = payload.sub;
@@ -70,38 +73,67 @@ export function initSocket(httpServer: HttpServer): IoServer {
   });
 
   io.on('connection', (socket: Socket) => {
-    const userId = socket.data.userId as string;
-    socket.join(`user:${userId}`);
+    const userId = socket.data.userId as string | undefined;
 
-    // Track this socket for presence.
-    let set = socketsByUser.get(userId);
-    if (!set) {
-      set = new Set<string>();
-      socketsByUser.set(userId, set);
-    }
-    set.add(socket.id);
+    if (userId) {
+      socket.join(`user:${userId}`);
 
-    void prisma.user.update({ where: { id: userId }, data: { lastSeenAt: new Date() } });
-    logger.debug({ userId, sid: socket.id, socketsForUser: set.size }, 'socket connected');
-
-    socket.on('presence:heartbeat', () => {
-      void prisma.user.update({ where: { id: userId }, data: { lastSeenAt: new Date() } });
-    });
-
-    socket.on('chat:typing', (payload: { conversationId?: string; isTyping?: boolean }) => {
-      if (typeof payload?.conversationId === 'string') {
-        emitTyping(payload.conversationId, userId, !!payload.isTyping);
+      let set = socketsByUser.get(userId);
+      if (!set) {
+        set = new Set<string>();
+        socketsByUser.set(userId, set);
       }
-    });
+      set.add(socket.id);
 
-    socket.on('session:subscribe', (sessionId: string) => {
-      if (typeof sessionId === 'string') socket.join(`session:${sessionId}`);
+      void prisma.user.update({ where: { id: userId }, data: { lastSeenAt: new Date() } });
+      logger.debug({ userId, sid: socket.id, socketsForUser: set.size }, 'socket connected');
+
+      socket.on('presence:heartbeat', () => {
+        void prisma.user.update({ where: { id: userId }, data: { lastSeenAt: new Date() } });
+      });
+
+      socket.on('chat:typing', (payload: { conversationId?: string; isTyping?: boolean }) => {
+        if (typeof payload?.conversationId === 'string') {
+          emitTyping(payload.conversationId, userId, !!payload.isTyping);
+        }
+      });
+
+      socket.on('session:subscribe', (sessionId: string) => {
+        if (typeof sessionId === 'string') socket.join(`session:${sessionId}`);
+      });
+      socket.on('session:unsubscribe', (sessionId: string) => {
+        if (typeof sessionId === 'string') socket.leave(`session:${sessionId}`);
+      });
+    }
+
+    const rescueCodeOk = (code: unknown): code is string =>
+      typeof code === 'string' && /^[A-Za-z0-9]{6,12}$/.test(code);
+
+    socket.on('rescue:subscribe', (code: string) => {
+      if (rescueCodeOk(code)) socket.join(`rescue:${code.toUpperCase()}`);
     });
-    socket.on('session:unsubscribe', (sessionId: string) => {
-      if (typeof sessionId === 'string') socket.leave(`session:${sessionId}`);
+    socket.on('rescue:unsubscribe', (code: string) => {
+      if (rescueCodeOk(code)) socket.leave(`rescue:${code.toUpperCase()}`);
+    });
+    socket.on('rescue:subscribe-members', (code: string) => {
+      if (!userId || !rescueCodeOk(code)) return;
+      const upper = code.toUpperCase();
+      void prisma.squadRescueMember
+        .findFirst({
+          where: { userId, leftAt: null, session: { rescueCode: upper } },
+          select: { id: true },
+        })
+        .then((row) => {
+          if (row) socket.join(`rescue:${upper}:members`);
+        })
+        .catch((err) => logger.warn({ err }, 'rescue member room join failed'));
+    });
+    socket.on('rescue:unsubscribe-members', (code: string) => {
+      if (rescueCodeOk(code)) socket.leave(`rescue:${code.toUpperCase()}:members`);
     });
 
     socket.on('disconnect', () => {
+      if (!userId) return;
       const remaining = socketsByUser.get(userId);
       if (remaining) {
         remaining.delete(socket.id);
@@ -123,6 +155,14 @@ export function emitToUser(userId: string, event: string, payload: unknown): voi
 
 export function emitToSession(sessionId: string, event: string, payload: unknown): void {
   io?.to(`session:${sessionId}`).emit(event, payload);
+}
+
+export function emitRescueUpdate(code: string, payload: unknown): void {
+  io?.to(`rescue:${code.toUpperCase()}`).emit('rescue:update', payload);
+}
+
+export function emitRescueMembers(code: string, payload: unknown): void {
+  io?.to(`rescue:${code.toUpperCase()}:members`).emit('rescue:members', payload);
 }
 
 export function getIo(): IoServer | null {

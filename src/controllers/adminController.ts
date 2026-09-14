@@ -54,14 +54,15 @@ adminRouter.get(
       totalReports,
       recentRegistrations,
       recentMatchesEvents,
+      communities,
     ] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { createdAt: { gte: dayAgo } } }),
-      prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
-      prisma.user.count({ where: { bannedAt: { not: null } } }),
+      prisma.user.count({ where: { isGuest: false } }),
+      prisma.user.count({ where: { isGuest: false, createdAt: { gte: dayAgo } } }),
+      prisma.user.count({ where: { isGuest: false, createdAt: { gte: weekAgo } } }),
+      prisma.user.count({ where: { isGuest: false, bannedAt: { not: null } } }),
       prisma.user.count({ where: { isAdmin: true } }),
-      prisma.game.count(),
-      prisma.game.count({ where: { status: 'active' } }),
+      prisma.game.count({ where: { id: { not: 'custom' } } }),
+      prisma.game.count({ where: { status: 'active', id: { not: 'custom' } } }),
       prisma.session.count(),
       prisma.session.count({ where: { status: 'open' } }),
       prisma.match.count({ where: { status: 'active' } }),
@@ -69,6 +70,7 @@ adminRouter.get(
       prisma.userReport.count({ where: { status: 'open' } }),
       prisma.userReport.count(),
       prisma.user.findMany({
+        where: { isGuest: false },
         orderBy: { createdAt: 'desc' },
         take: 5,
         select: { id: true, name: true, email: true, photoUrl: true, createdAt: true },
@@ -76,6 +78,10 @@ adminRouter.get(
       prisma.analyticsEvent.findMany({
         where: { name: { in: ['match_start', 'match_end'] }, createdAt: { gte: weekAgo } },
         select: { name: true, createdAt: true },
+      }),
+      prisma.community.findMany({
+        orderBy: { squadsCreated: 'desc' },
+        take: 8,
       }),
     ]);
 
@@ -111,6 +117,7 @@ adminRouter.get(
         totalReports,
       },
       recentRegistrations,
+      communities,
       matchesChart: Object.values(buckets),
     });
   }),
@@ -122,7 +129,7 @@ adminRouter.get(
 
 const listUsersQuery = z.object({
   search: z.string().trim().max(120).optional(),
-  status: z.enum(['all', 'active', 'banned', 'admin']).optional(),
+  status: z.enum(['all', 'active', 'banned', 'admin', 'guest']).optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });
@@ -142,6 +149,11 @@ adminRouter.get(
         { name: { contains: q.search, mode: 'insensitive' } },
         { id: { equals: q.search } },
       ];
+    }
+    if (q.status === 'guest') {
+      where.isGuest = true;
+    } else {
+      where.isGuest = false;
     }
     if (q.status === 'banned') where.bannedAt = { not: null };
     if (q.status === 'active') where.bannedAt = null;
@@ -392,6 +404,7 @@ adminRouter.get(
   '/games',
   asyncHandler(async (_req, res) => {
     const games = await prisma.game.findMany({
+      where: { id: { not: 'custom' } },
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
       include: {
         _count: { select: { sessions: true, gameProfiles: true } },
@@ -416,6 +429,7 @@ adminRouter.post(
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof createGameSchema>;
     const exists = await prisma.game.findUnique({ where: { id: body.id } });
+    if (body.id === 'custom') throw HttpError.badRequest('Reserved game id', 'reserved_game');
     if (exists) throw HttpError.conflict('Game ID already exists');
 
     const game = await prisma.game.create({
@@ -442,6 +456,7 @@ adminRouter.patch(
   validate(updateGameSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof updateGameSchema>;
+    if (req.params.id === 'custom') throw HttpError.badRequest('Reserved game', 'reserved_game');
     const exists = await prisma.game.findUnique({ where: { id: req.params.id } });
     if (!exists) throw HttpError.notFound('Game not found');
 
@@ -464,6 +479,7 @@ adminRouter.delete(
       include: { _count: { select: { sessions: true, gameProfiles: true } } },
     });
     if (!exists) throw HttpError.notFound('Game not found');
+    if (exists.id === 'custom') throw HttpError.badRequest('Reserved game', 'reserved_game');
 
     if (exists._count.sessions > 0 || exists._count.gameProfiles > 0) {
       throw HttpError.badRequest(
@@ -534,6 +550,7 @@ adminRouter.post(
 
 const listSessionsQuery = z.object({
   status: z.enum(['all', 'open', 'active', 'finished']).optional(),
+  kind: z.enum(['all', 'app', 'rescue']).optional(),
   gameId: z.string().optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
@@ -550,6 +567,8 @@ adminRouter.get(
     const where: Prisma.SessionWhereInput = {};
     if (q.status && q.status !== 'all') where.status = q.status;
     if (q.gameId) where.gameId = q.gameId;
+    if (q.kind === 'rescue') where.rescueCode = { not: null };
+    if (q.kind === 'app') where.rescueCode = null;
 
     const [total, items] = await Promise.all([
       prisma.session.count({ where }),
@@ -720,5 +739,66 @@ adminRouter.patch(
     });
 
     res.json({ user: updated });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Communities (Squad Rescue attribution + 3 basic counters)
+// ---------------------------------------------------------------------------
+
+const communitySlug = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z][a-z0-9_-]{1,39}$/, 'lowercase slug, 2-40 chars');
+
+const createCommunitySchema = z.object({
+  id: communitySlug,
+  name: z.string().trim().min(2).max(80),
+  externalUrl: z.string().trim().url().max(300).optional().nullable(),
+});
+
+const patchCommunitySchema = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  externalUrl: z.string().trim().url().max(300).optional().nullable(),
+});
+
+adminRouter.get(
+  '/communities',
+  asyncHandler(async (_req, res) => {
+    const items = await prisma.community.findMany({ orderBy: { name: 'asc' } });
+    res.json({ items });
+  }),
+);
+
+adminRouter.post(
+  '/communities',
+  validate(createCommunitySchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as z.infer<typeof createCommunitySchema>;
+    const exists = await prisma.community.findUnique({ where: { id: body.id } });
+    if (exists) throw HttpError.conflict('Community slug already exists', 'slug_taken');
+    const community = await prisma.community.create({
+      data: { id: body.id, name: body.name, externalUrl: body.externalUrl ?? null },
+    });
+    res.status(201).json({ community });
+  }),
+);
+
+adminRouter.patch(
+  '/communities/:id',
+  validate(patchCommunitySchema),
+  asyncHandler(async (req, res) => {
+    const exists = await prisma.community.findUnique({ where: { id: req.params.id } });
+    if (!exists) throw HttpError.notFound('Community not found');
+    const body = req.body as z.infer<typeof patchCommunitySchema>;
+    const community = await prisma.community.update({
+      where: { id: req.params.id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.externalUrl !== undefined ? { externalUrl: body.externalUrl } : {}),
+      },
+    });
+    res.json({ community });
   }),
 );

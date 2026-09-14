@@ -28,6 +28,7 @@ import { adminRouter } from './controllers/adminController';
 import { billingRouter } from './controllers/billingController';
 import { referralRouter, inviteRedirectRouter } from './controllers/referralController';
 import { autoGroupRouter } from './controllers/autoGroupController';
+import { squadRescueRouter } from './controllers/squadRescueController';
 
 export function buildApp(): express.Express {
   const app = express();
@@ -123,6 +124,7 @@ export function buildApp(): express.Express {
   app.use('/api/v1/billing', billingRouter);
   app.use('/api/v1/referrals', referralRouter);
   app.use('/api/v1/auto-groups', autoGroupRouter);
+  app.use('/api/v1/squad-rescue', squadRescueRouter);
 
   // Public invite landing page: GET /i/<code> → Play Store / App Store / HTML page.
   // No /api/v1 prefix so the share URL is short & friendly to paste anywhere.

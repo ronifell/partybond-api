@@ -45,6 +45,7 @@ sessionRouter.get(
     const sessions = await prisma.session.findMany({
       where: {
         status: { in: ['open', 'active'] },
+        rescueCode: null,
         ...(gameId ? { gameId } : {}),
         ...(gameMode ? { gameMode } : {}),
         ...(skillTier ? { skillTier } : {}),
@@ -205,6 +206,9 @@ sessionRouter.post(
 
       const session = await tx.session.findUnique({ where: { id: sessionId } });
       if (!session) throw HttpError.notFound('Session not found');
+      if (session.rescueCode) {
+        throw HttpError.badRequest('Use the Squad Rescue web flow for this session', 'rescue_session');
+      }
       if (session.status === 'finished') {
         throw HttpError.badRequest('Session finished', 'session_finished');
       }

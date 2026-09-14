@@ -142,6 +142,12 @@ export async function tryCreateMatchForSession(sessionId: string) {
  */
 export async function tryDrainSession(sessionId: string): Promise<void> {
   try {
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { rescueCode: true },
+    });
+    if (session?.rescueCode) return;
+
     // Loop until no more matches can be created
     // (handles multiple people joining a session in quick succession).
     // Cap at a safety limit.

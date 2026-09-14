@@ -41,6 +41,9 @@ async function main() {
       status: GameStatus.coming_soon,
       maxPlayers: 5,
     },
+    // Fallback catalog row for free-text Squad Rescue games that do not match.
+    // Hidden from the mobile catalog (coming_soon + filtered in GET /games).
+    { id: 'custom', name: 'Custom', status: GameStatus.coming_soon, maxPlayers: 8 },
   ];
 
   for (const g of games) {
@@ -51,7 +54,13 @@ async function main() {
     });
   }
 
-  console.log('Seed completed: games inserted/updated.');
+  await prisma.community.upsert({
+    where: { id: 'ffmobilebrasil' },
+    update: { name: 'FF Mobile Brasil' },
+    create: { id: 'ffmobilebrasil', name: 'FF Mobile Brasil' },
+  });
+
+  console.log('Seed completed: games + default community inserted/updated.');
 }
 
 main()

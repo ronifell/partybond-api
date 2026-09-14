@@ -100,6 +100,9 @@ export const env = {
     ),
   },
 
+  /** Public Squad Rescue website (share links, OG URLs). */
+  webAppUrl: (cleanEnv(process.env.WEB_APP_URL) || 'http://localhost:3001').replace(/\/+$/, ''),
+
   /** Referral / invite-a-friend program. */
   referral: {
     /** Base URL of the public invite landing page (e.g. https://api.partybond.com/i). */
