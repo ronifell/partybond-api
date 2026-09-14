@@ -39,3 +39,36 @@ export const GAME_ALIASES: Record<string, string> = {
   'ea fc': 'ea_sports_fc_26',
   'elden ring': 'elden_ring_nightreign',
 };
+
+export const RESCUE_MATCH_TYPES = ['ranked', 'casual', 'custom', 'tournament', 'any'] as const;
+export type RescueMatchType = (typeof RESCUE_MATCH_TYPES)[number];
+
+export const RESCUE_PLATFORMS = [
+  'mobile',
+  'pc',
+  'playstation',
+  'xbox',
+  'switch',
+  'cross_platform',
+  'other',
+] as const;
+export type RescuePlatform = (typeof RESCUE_PLATFORMS)[number];
+
+export const RESCUE_MIC_PREFERENCES = ['yes', 'no', 'any'] as const;
+export type RescueMicPreference = (typeof RESCUE_MIC_PREFERENCES)[number];
+
+export function isRescueMatchType(value: unknown): value is RescueMatchType {
+  return typeof value === 'string' && (RESCUE_MATCH_TYPES as readonly string[]).includes(value);
+}
+
+export function isRescuePlatform(value: unknown): value is RescuePlatform {
+  return typeof value === 'string' && (RESCUE_PLATFORMS as readonly string[]).includes(value);
+}
+
+export function isRescueMicPreference(value: unknown): value is RescueMicPreference {
+  return typeof value === 'string' && (RESCUE_MIC_PREFERENCES as readonly string[]).includes(value);
+}
+
+export function sessionModeFromMatchType(matchType: RescueMatchType): 'casual' | 'competitive' {
+  return matchType === 'ranked' ? 'competitive' : 'casual';
+}

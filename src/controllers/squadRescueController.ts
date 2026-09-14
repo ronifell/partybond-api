@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
+import { RESCUE_MATCH_TYPES, RESCUE_MIC_PREFERENCES, RESCUE_PLATFORMS } from '../constants/squadRescue';
 import { requireAuth } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -47,12 +48,18 @@ const guestSchema = z.object({
 
 const createSchema = z.object({
   game: z.string().trim().min(1).max(60),
-  platform: z.enum(['playstation', 'xbox', 'pc', 'mobile']),
-  gameMode: z.enum(['casual', 'competitive']),
+  platform: z.enum(RESCUE_PLATFORMS),
+  matchType: z.enum(RESCUE_MATCH_TYPES),
+  gameMode: z
+    .string()
+    .trim()
+    .max(60)
+    .optional()
+    .transform((value) => (value ? value : undefined)),
   extrasNeeded: z.coerce.number().int().min(1).max(7),
   nickname: z.string().trim().min(2).max(24),
   gameUid: z.string().trim().min(2).max(40),
-  micRequired: z.boolean(),
+  micPreference: z.enum(RESCUE_MIC_PREFERENCES),
   communityId: z
     .string()
     .trim()

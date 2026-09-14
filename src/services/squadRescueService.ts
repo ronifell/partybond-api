@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import type { GamePlatform, Prisma, SessionMode, SquadRescueStatus } from '@prisma/client';
+import type { Prisma, SquadRescueStatus } from '@prisma/client';
 import { prisma } from '../config/database';
 import { env } from '../config/env';
 import { TX_OPTIONS } from '../config/prismaTx';
@@ -10,6 +10,13 @@ import {
   RESCUE_CODE_ALPHABET,
   RESCUE_CODE_LENGTH,
   SQUAD_RESCUE_TTL_MS,
+  isRescueMatchType,
+  isRescueMicPreference,
+  isRescuePlatform,
+  sessionModeFromMatchType,
+  type RescueMatchType,
+  type RescueMicPreference,
+  type RescuePlatform,
 } from '../constants/squadRescue';
 import { HttpError } from '../utils/httpError';
 import { signGuestJwt } from '../utils/jwt';
@@ -38,8 +45,10 @@ export interface RescuePublicDto {
   sessionId: string;
   game: string;
   gameId: string;
-  platform: GamePlatform;
-  gameMode: SessionMode;
+  platform: RescuePlatform;
+  matchType: RescueMatchType;
+  gameMode: string | null;
+  micPreference: RescueMicPreference;
   micRequired: boolean;
   extrasNeeded: number;
   current: number;
@@ -118,20 +127,40 @@ async function ensureCustomGame(tx: Tx): Promise<void> {
   });
 }
 
+function rescuePlatformOf(session: RescueSession): RescuePlatform {
+  return isRescuePlatform(session.rescuePlatform) ? session.rescuePlatform : 'mobile';
+}
+
+function rescueMatchTypeOf(session: RescueSession): RescueMatchType {
+  if (isRescueMatchType(session.rescueMatchType)) return session.rescueMatchType;
+  return session.gameMode === 'competitive' ? 'ranked' : 'casual';
+}
+
+function rescueMicPreferenceOf(session: RescueSession): RescueMicPreference {
+  if (isRescueMicPreference(session.rescueMicPreference)) return session.rescueMicPreference;
+  if (session.rescueMicRequired === true) return 'yes';
+  if (session.rescueMicRequired === false) return 'no';
+  return 'any';
+}
+
 function toPublic(session: RescueSession): RescuePublicDto {
   const members = activeMembers(session);
   const total = session.playersNeeded;
   const current = members.length;
   const status = session.rescueStatus ?? 'expired';
   const openSlots = status === 'open' ? Math.max(0, total - current) : 0;
+  const micPreference = rescueMicPreferenceOf(session);
+  const modeLabel = session.rescueGameMode?.trim() || null;
   return {
     code: session.rescueCode!,
     sessionId: session.id,
     game: session.rescueGameLabel || session.game.name,
     gameId: session.gameId,
-    platform: session.rescuePlatform ?? 'mobile',
-    gameMode: session.gameMode,
-    micRequired: session.rescueMicRequired ?? false,
+    platform: rescuePlatformOf(session),
+    matchType: rescueMatchTypeOf(session),
+    gameMode: modeLabel,
+    micPreference,
+    micRequired: micPreference === 'yes',
     extrasNeeded: Math.max(0, total - 1),
     current,
     total,
@@ -288,12 +317,13 @@ export async function createRescue(
   userId: string,
   input: {
     game: string;
-    platform: GamePlatform;
-    gameMode: SessionMode;
+    platform: RescuePlatform;
+    matchType: RescueMatchType;
+    gameMode?: string;
     extrasNeeded: number;
     nickname: string;
     gameUid: string;
-    micRequired: boolean;
+    micPreference: RescueMicPreference;
     communityId?: string;
   },
 ): Promise<RescueMemberViewDto> {
@@ -303,6 +333,8 @@ export async function createRescue(
   const extrasNeeded = input.extrasNeeded;
   const total = extrasNeeded + 1;
   const gameId = await resolveGameId(gameLabel);
+  const modeLabel = input.gameMode?.trim() || null;
+  const micRequired = input.micPreference === 'yes';
 
   const community = input.communityId
     ? await prisma.community.findUnique({ where: { id: input.communityId } })
@@ -324,7 +356,7 @@ export async function createRescue(
         gameId,
         title: `Squad Rescue — ${gameLabel}`.slice(0, 60),
         createdById: userId,
-        gameMode: input.gameMode,
+        gameMode: sessionModeFromMatchType(input.matchType),
         skillTier: 'beginner',
         playersNeeded: total,
         scheduledAt: now,
@@ -332,8 +364,11 @@ export async function createRescue(
         rescueCode: code,
         rescueStatus: 'open',
         rescuePlatform: input.platform,
-        rescueMicRequired: input.micRequired,
+        rescueMicRequired: micRequired,
         rescueGameLabel: gameLabel.slice(0, 80),
+        rescueMatchType: input.matchType,
+        rescueGameMode: modeLabel ? modeLabel.slice(0, 60) : null,
+        rescueMicPreference: input.micPreference,
         rescueExpiresAt: new Date(now.getTime() + SQUAD_RESCUE_TTL_MS),
         rescueCommunityId: community?.id ?? null,
         rescueMembers: {
@@ -341,7 +376,7 @@ export async function createRescue(
             userId,
             nickname,
             gameUid,
-            hasMic: input.micRequired,
+            hasMic: input.micPreference !== 'no',
             isCreator: true,
           },
         },
@@ -567,12 +602,13 @@ export async function playAgain(code: string, userId: string): Promise<RescueMem
 
   const created = await createRescue(userId, {
     game: previous.rescueGameLabel || previous.game.name,
-    platform: previous.rescuePlatform ?? 'mobile',
-    gameMode: previous.gameMode,
+    platform: rescuePlatformOf(previous),
+    matchType: rescueMatchTypeOf(previous),
+    gameMode: previous.rescueGameMode ?? undefined,
     extrasNeeded: Math.max(1, previous.playersNeeded - 1),
     nickname: mine.nickname,
     gameUid: mine.gameUid,
-    micRequired: previous.rescueMicRequired ?? false,
+    micPreference: rescueMicPreferenceOf(previous),
     communityId: previous.rescueCommunityId ?? undefined,
   });
   void track('rescue_play_again', userId, { from: previous.rescueCode, to: created.code });
