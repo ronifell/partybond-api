@@ -267,6 +267,10 @@ function assertOpen(session: RescueSession): void {
   throw HttpError.badRequest('This Squad Rescue is no longer open', code);
 }
 
+function isPrismaUniqueConflict(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
+}
+
 export async function ensureGuest(input: {
   guestKey: string;
   locale?: string;
@@ -277,7 +281,11 @@ export async function ensureGuest(input: {
   }
 
   const locale = input.locale === 'pt' ? 'pt' : 'en';
-  let user = await prisma.user.findUnique({ where: { guestKey } });
+  const email = `guest.${guestKey.toLowerCase()}@guest.partybond.internal`;
+
+  let user =
+    (await prisma.user.findUnique({ where: { guestKey } })) ??
+    (await prisma.user.findUnique({ where: { email } }));
 
   if (user?.bannedAt) {
     throw HttpError.forbidden('This guest cannot join', 'banned');
@@ -285,19 +293,35 @@ export async function ensureGuest(input: {
 
   if (!user) {
     const passwordHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), GUEST_HASH_ROUNDS);
-    user = await prisma.user.create({
+    try {
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          name: 'Guest',
+          age: 18,
+          locale,
+          isGuest: true,
+          guestKey,
+        },
+      });
+    } catch (err) {
+      if (!isPrismaUniqueConflict(err)) throw err;
+      user =
+        (await prisma.user.findUnique({ where: { guestKey } })) ??
+        (await prisma.user.findUnique({ where: { email } }));
+      if (!user) throw err;
+    }
+  }
+
+  if (user.locale !== locale || user.guestKey !== guestKey) {
+    user = await prisma.user.update({
+      where: { id: user.id },
       data: {
-        email: `guest.${guestKey.toLowerCase()}@guest.partybond.internal`,
-        passwordHash,
-        name: 'Guest',
-        age: 18,
         locale,
-        isGuest: true,
         guestKey,
       },
     });
-  } else if (user.locale !== locale) {
-    user = await prisma.user.update({ where: { id: user.id }, data: { locale } });
   }
 
   const token = signGuestJwt({ sub: user.id, email: user.email });
