@@ -16,6 +16,7 @@ import { requireAdmin } from '../middlewares/requireAdmin';
 import { validate } from '../middlewares/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/httpError';
+import { assertCommunityUrl } from '../utils/communityUrl';
 import { track } from '../services/analyticsService';
 import {
   extFromMime,
@@ -752,14 +753,18 @@ const communitySlug = z
   .toLowerCase()
   .regex(/^[a-z][a-z0-9_-]{1,39}$/, 'lowercase slug, 2-40 chars');
 
+const communityPlatform = z.enum(['discord', 'facebook']);
+
 const createCommunitySchema = z.object({
   id: communitySlug,
   name: z.string().trim().min(2).max(80),
-  externalUrl: z.string().trim().url().max(300).optional().nullable(),
+  platform: communityPlatform,
+  externalUrl: z.string().trim().url().max(300),
 });
 
 const patchCommunitySchema = z.object({
   name: z.string().trim().min(2).max(80).optional(),
+  platform: communityPlatform.optional(),
   externalUrl: z.string().trim().url().max(300).optional().nullable(),
 });
 
@@ -778,8 +783,14 @@ adminRouter.post(
     const body = req.body as z.infer<typeof createCommunitySchema>;
     const exists = await prisma.community.findUnique({ where: { id: body.id } });
     if (exists) throw HttpError.conflict('Community slug already exists', 'slug_taken');
+    const externalUrl = assertCommunityUrl(body.platform, body.externalUrl);
     const community = await prisma.community.create({
-      data: { id: body.id, name: body.name, externalUrl: body.externalUrl ?? null },
+      data: {
+        id: body.id,
+        name: body.name,
+        platform: body.platform,
+        externalUrl,
+      },
     });
     res.status(201).json({ community });
   }),
@@ -792,11 +803,15 @@ adminRouter.patch(
     const exists = await prisma.community.findUnique({ where: { id: req.params.id } });
     if (!exists) throw HttpError.notFound('Community not found');
     const body = req.body as z.infer<typeof patchCommunitySchema>;
+    const platform = body.platform ?? exists.platform;
+    const proposedUrl = body.externalUrl !== undefined ? body.externalUrl : exists.externalUrl;
+    const externalUrl = proposedUrl ? assertCommunityUrl(platform, proposedUrl) : proposedUrl;
     const community = await prisma.community.update({
       where: { id: req.params.id },
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
-        ...(body.externalUrl !== undefined ? { externalUrl: body.externalUrl } : {}),
+        ...(body.platform !== undefined ? { platform: body.platform } : {}),
+        ...(body.externalUrl !== undefined ? { externalUrl } : {}),
       },
     });
     res.json({ community });

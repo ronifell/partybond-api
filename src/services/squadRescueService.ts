@@ -37,6 +37,7 @@ export interface RescueMemberDto {
 export interface RescueCommunityDto {
   id: string;
   name: string;
+  platform: 'discord' | 'facebook';
   externalUrl: string | null;
 }
 
@@ -143,6 +144,15 @@ function rescueMicPreferenceOf(session: RescueSession): RescueMicPreference {
   return 'any';
 }
 
+function toPublicCommunity(community: NonNullable<RescueSession['rescueCommunity']>): RescueCommunityDto {
+  return {
+    id: community.id,
+    name: community.name,
+    platform: community.platform === 'facebook' ? 'facebook' : 'discord',
+    externalUrl: community.externalUrl,
+  };
+}
+
 function toPublic(session: RescueSession): RescuePublicDto {
   const members = activeMembers(session);
   const total = session.playersNeeded;
@@ -168,13 +178,7 @@ function toPublic(session: RescueSession): RescuePublicDto {
     status,
     expiresAt: (session.rescueExpiresAt ?? session.createdAt).toISOString(),
     createdAt: session.createdAt.toISOString(),
-    community: session.rescueCommunity
-      ? {
-          id: session.rescueCommunity.id,
-          name: session.rescueCommunity.name,
-          externalUrl: session.rescueCommunity.externalUrl,
-        }
-      : null,
+    community: session.rescueCommunity ? toPublicCommunity(session.rescueCommunity) : null,
   };
 }
 
@@ -360,10 +364,11 @@ export async function createRescue(
   const modeLabel = input.gameMode?.trim() || null;
   const micRequired = input.micPreference === 'yes';
 
-  const community = input.communityId
-    ? await prisma.community.findUnique({ where: { id: input.communityId } })
+  const communityId = input.communityId?.trim().toLowerCase();
+  const community = communityId
+    ? await prisma.community.findUnique({ where: { id: communityId } })
     : null;
-  if (input.communityId && !community) {
+  if (communityId && !community) {
     throw HttpError.notFound('Community not found', 'community_not_found');
   }
 
@@ -661,18 +666,22 @@ export async function expireOpenRescues(): Promise<number> {
   return count;
 }
 
-export async function getCommunity(slug: string) {
-  const community = await prisma.community.findUnique({ where: { id: slug } });
+export async function getCommunity(slug: string): Promise<RescueCommunityDto> {
+  const community = await prisma.community.findUnique({
+    where: { id: slug.trim().toLowerCase() },
+  });
   if (!community) throw HttpError.notFound('Community not found', 'community_not_found');
-  return community;
+  return toPublicCommunity(community);
 }
 
-export async function recordCommunityVisit(slug: string) {
-  const community = await prisma.community.update({
-    where: { id: slug },
-    data: { visitCount: { increment: 1 } },
-  }).catch(() => null);
+export async function recordCommunityVisit(slug: string): Promise<RescueCommunityDto> {
+  const community = await prisma.community
+    .update({
+      where: { id: slug.trim().toLowerCase() },
+      data: { visitCount: { increment: 1 } },
+    })
+    .catch(() => null);
   if (!community) throw HttpError.notFound('Community not found', 'community_not_found');
-  return community;
+  return toPublicCommunity(community);
 }
 

@@ -63,6 +63,7 @@ const createSchema = z.object({
   communityId: z
     .string()
     .trim()
+    .toLowerCase()
     .min(2)
     .max(40)
     .regex(/^[a-z][a-z0-9_-]*$/)
@@ -81,7 +82,7 @@ const codeParam = z.object({
 });
 
 const slugParam = z.object({
-  slug: z.string().regex(/^[a-z][a-z0-9_-]{1,39}$/),
+  slug: z.string().trim().toLowerCase().regex(/^[a-z][a-z0-9_-]{1,39}$/),
 });
 
 squadRescueRouter.post(

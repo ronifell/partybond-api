@@ -339,15 +339,21 @@ model SquadRescueMember {
 }
 
 /// Public community landing used only as attribution + three basic counters.
+enum CommunityPlatform {
+  discord
+  facebook
+}
+
 model Community {
-  id              String   @id
+  id              String             @id
   name            String
-  externalUrl     String?  @map("external_url")
-  visitCount      Int      @default(0) @map("visit_count")
-  squadsCreated   Int      @default(0) @map("squads_created")
-  squadsCompleted Int      @default(0) @map("squads_completed")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  platform        CommunityPlatform  @default(discord)
+  externalUrl     String?            @map("external_url")
+  visitCount      Int                @default(0) @map("visit_count")
+  squadsCreated   Int                @default(0) @map("squads_created")
+  squadsCompleted Int                @default(0) @map("squads_completed")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
 
   sessions Session[]
 

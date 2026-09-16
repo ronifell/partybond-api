@@ -56,8 +56,8 @@ async function main() {
 
   await prisma.community.upsert({
     where: { id: 'ffmobilebrasil' },
-    update: { name: 'FF Mobile Brasil' },
-    create: { id: 'ffmobilebrasil', name: 'FF Mobile Brasil' },
+    update: { name: 'FF Mobile Brasil', platform: 'discord' },
+    create: { id: 'ffmobilebrasil', name: 'FF Mobile Brasil', platform: 'discord' },
   });
 
   console.log('Seed completed: games + default community inserted/updated.');
