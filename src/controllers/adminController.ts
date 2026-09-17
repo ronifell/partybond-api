@@ -17,6 +17,7 @@ import { validate } from '../middlewares/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/httpError';
 import { assertCommunityUrl } from '../utils/communityUrl';
+import { communitySetupUrl } from '../services/squadRescueService';
 import { track } from '../services/analyticsService';
 import {
   extFromMime,
@@ -772,7 +773,7 @@ adminRouter.get(
   '/communities',
   asyncHandler(async (_req, res) => {
     const items = await prisma.community.findMany({ orderBy: { name: 'asc' } });
-    res.json({ items });
+    res.json({ items, setupUrl: communitySetupUrl() });
   }),
 );
 

@@ -19,6 +19,11 @@ import {
   type RescuePlatform,
 } from '../constants/squadRescue';
 import { HttpError } from '../utils/httpError';
+import {
+  assertCommunityUrl,
+  communityPlatformFromUrl,
+  slugFromName,
+} from '../utils/communityUrl';
 import { signGuestJwt } from '../utils/jwt';
 import { track } from './analyticsService';
 import { emitRescueMembers, emitRescueUpdate } from '../socket';
@@ -683,5 +688,52 @@ export async function recordCommunityVisit(slug: string): Promise<RescueCommunit
     .catch(() => null);
   if (!community) throw HttpError.notFound('Community not found', 'community_not_found');
   return toPublicCommunity(community);
+}
+
+function setupKeyMatches(provided: string): boolean {
+  const expected = env.communitySetupKey;
+  if (!expected) return false;
+  const a = crypto.createHash('sha256').update(provided).digest();
+  const b = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+export function communitySetupUrl(): string | null {
+  if (!env.communitySetupKey) return null;
+  return `${env.webAppUrl}/setup/${env.communitySetupKey}`;
+}
+
+export async function setupCommunity(input: {
+  key: string;
+  name: string;
+  externalUrl: string;
+  id?: string;
+}): Promise<{ community: RescueCommunityDto; publicUrl: string }> {
+  if (!setupKeyMatches(input.key)) {
+    throw HttpError.unauthorized('Invalid setup link', 'invalid_setup_key');
+  }
+  const platform = communityPlatformFromUrl(input.externalUrl);
+  if (!platform) {
+    throw HttpError.badRequest('Use a Discord or Facebook link', 'invalid_community_url');
+  }
+  const externalUrl = assertCommunityUrl(platform, input.externalUrl);
+  const id = (input.id?.trim().toLowerCase() || slugFromName(input.name));
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(id)) {
+    throw HttpError.badRequest('Choose a simple community link (letters and numbers)', 'invalid_slug');
+  }
+  const exists = await prisma.community.findUnique({ where: { id } });
+  if (exists) throw HttpError.conflict('This community link is already taken', 'slug_taken');
+  const created = await prisma.community.create({
+    data: {
+      id,
+      name: input.name.trim(),
+      platform,
+      externalUrl,
+    },
+  });
+  return {
+    community: toPublicCommunity(created),
+    publicUrl: `${env.webAppUrl}/c/${created.id}`,
+  };
 }
 

@@ -103,6 +103,13 @@ export const env = {
   /** Public Squad Rescue website (share links, OG URLs). */
   webAppUrl: (cleanEnv(process.env.WEB_APP_URL) || 'http://localhost:3001').replace(/\/+$/, ''),
 
+  /**
+   * Private token for the community-admin setup page:
+   * `{WEB_APP_URL}/setup/{COMMUNITY_SETUP_KEY}`
+   * Empty disables public self-serve community creation.
+   */
+  communitySetupKey: cleanEnv(process.env.COMMUNITY_SETUP_KEY),
+
   /** Referral / invite-a-friend program. */
   referral: {
     /** Base URL of the public invite landing page (e.g. https://api.partybond.com/i). */

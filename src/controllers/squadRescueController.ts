@@ -85,6 +85,26 @@ const slugParam = z.object({
   slug: z.string().trim().toLowerCase().regex(/^[a-z][a-z0-9_-]{1,39}$/),
 });
 
+const setupLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: 8,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: { message: 'Too many community setup attempts. Try again later.', code: 'rate_limited' } },
+});
+
+const setupCommunitySchema = z.object({
+  key: z.string().trim().min(16).max(80),
+  name: z.string().trim().min(2).max(80),
+  externalUrl: z.string().trim().url().max(300),
+  id: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z][a-z0-9_-]{1,39}$/)
+    .optional(),
+});
+
 squadRescueRouter.post(
   '/guest',
   guestLimiter,
@@ -124,6 +144,17 @@ squadRescueRouter.post(
   asyncHandler(async (req, res) => {
     const community = await rescue.recordCommunityVisit(req.params.slug);
     res.json({ community });
+  }),
+);
+
+squadRescueRouter.post(
+  '/communities/setup',
+  setupLimiter,
+  validate(setupCommunitySchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as z.infer<typeof setupCommunitySchema>;
+    const result = await rescue.setupCommunity(body);
+    res.status(201).json(result);
   }),
 );
 
